@@ -353,6 +353,7 @@ void DockFft::readSettings(QSettings *settings)
 
 void DockFft::setPandapterRange(float min, float max)
 {
+    qDebug() << "DockFft::setPandapterRange" << min << max << (int) min << (int) max;
     ui->pandRangeSlider->blockSignals(true);
     ui->pandRangeSlider->setValues((int) min, (int) max);
     if (ui->lockButton->isChecked())
@@ -363,6 +364,7 @@ void DockFft::setPandapterRange(float min, float max)
 
 void DockFft::setWaterfallRange(float min, float max)
 {
+    qDebug() << "DockFft::setWaterfallRange" << min << max << (int) min << (int) max;
     ui->wfRangeSlider->blockSignals(true);
     ui->wfRangeSlider->setValues((int) min, (int) max);
     if (ui->lockButton->isChecked())
@@ -464,6 +466,7 @@ void DockFft::on_fftZoomSlider_valueChanged(int level)
 
 void DockFft::on_pandRangeSlider_valuesChanged(int min, int max)
 {
+    qDebug() << "DockFft::on_pandRangeSlider_valuesChanged" << min << max;
     if (ui->lockButton->isChecked())
         ui->wfRangeSlider->setValues(min, max);
 
@@ -473,6 +476,7 @@ void DockFft::on_pandRangeSlider_valuesChanged(int min, int max)
 
 void DockFft::on_wfRangeSlider_valuesChanged(int min, int max)
 {
+    qDebug() << "DockFft::on_wfRangeSlider_valuesChanged" << min << max;
     if (ui->lockButton->isChecked())
         ui->pandRangeSlider->setValues(min, max);
 

@@ -640,6 +640,7 @@ void ctkRangeSlider::paintEvent( QPaintEvent* )
 void ctkRangeSlider::mousePressEvent(QMouseEvent* mouseEvent)
 {
   Q_D(ctkRangeSlider);
+  qDebug() << "ctkRangeSlider::mousePressEvent" << mouseEvent->pos().x() << mouseEvent->pos().y();
   if (minimum() == maximum() || (mouseEvent->buttons() ^ mouseEvent->button()))
     {
     mouseEvent->ignore();
@@ -713,6 +714,7 @@ void ctkRangeSlider::mousePressEvent(QMouseEvent* mouseEvent)
 void ctkRangeSlider::mouseMoveEvent(QMouseEvent* mouseEvent)
 {
   Q_D(ctkRangeSlider);
+  qDebug() << "ctkRangeSlider::mouseMoveEvent" << mouseEvent->pos().x() << mouseEvent->pos().y();
   if (!d->m_SelectedHandles)
     {
     mouseEvent->ignore();
@@ -766,6 +768,7 @@ void ctkRangeSlider::mouseMoveEvent(QMouseEvent* mouseEvent)
 void ctkRangeSlider::mouseReleaseEvent(QMouseEvent* mouseEvent)
 {
   Q_D(ctkRangeSlider);
+  qDebug() << "ctkRangeSlider::mouseReleaseEvent" << mouseEvent->pos().x() << mouseEvent->pos().y();
   this->QSlider::mouseReleaseEvent(mouseEvent);
 
   setSliderDown(false);
