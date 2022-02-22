@@ -2,6 +2,7 @@
     2.15.9: In progress...
 
        NEW: Qt 6 support.
+       NEW: Added PlutoSDR support to AppImage release.
      FIXED: Slider widgets don't work correctly on MacOS Monterey.
 
 

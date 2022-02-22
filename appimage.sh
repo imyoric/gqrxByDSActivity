@@ -67,12 +67,14 @@ chmod a+x *.AppImage
 
 # abra-cadabra
 mkdir -p ./AppDir/usr/lib
-cp -R /usr/lib/x86_64-linux-gnu/SoapySDR/modules* ./AppDir/usr/soapy-modules
+mkdir -p ./AppDir/usr/soapy-modules
+ln -s ../lib/libremoteSupport.so ./AppDir/usr/soapy-modules/libremoteSupport.so
+ln -s ../lib/libPlutoSDRSupport.so ./AppDir/usr/soapy-modules/libPlutoSDRSupport.so
 
 mkdir -p ./AppDir/apprun-hooks
 echo 'export UHD_PKG_PATH="$APPDIR/usr"' >./AppDir/apprun-hooks/uhd-hook.sh
 
-./linuxdeploy-x86_64.AppImage -e "$APP" -d "$DESKTOP" -i "$ICON" -p qt --output appimage --appdir=./AppDir
+./linuxdeploy-x86_64.AppImage -e "$APP" -l /usr/local/lib/SoapySDR/modules0.8/libremoteSupport.so -l /usr/local/lib/SoapySDR/modules0.8/libPlutoSDRSupport.so -d "$DESKTOP" -i "$ICON" -p qt --output appimage --appdir=./AppDir
 RESULT=$?
 
 # check build success
