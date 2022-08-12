@@ -16,52 +16,125 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y --no-install-recommends software-properties-common
-          add-apt-repository -y ppa:gnuradio/gnuradio-releases
           add-apt-repository -y ppa:git-core/ppa
           apt-get install -y --no-install-recommends \
-            git \
-            build-essential \
             autoconf \
             automake \
+            build-essential \
             cmake \
+            cpufrequtils \
+            doxygen \
+            ethtool \
+            git \
+            libairspy-dev \
+            libairspyhf-dev \
+            libboost-all-dev \
+            libfreesrp-dev \
+            libfftw3-dev \
+            libgmp-dev \
+            libhackrf-dev \
+            libhidapi-dev \
+            liblog4cpp5-dev \
+            liborc-0.4-dev \
+            libpulse-dev \
+            libqt5svg5-dev \
+            librtlsdr-dev \
+            libsndfile-dev \
+            libsoapysdr-dev \
             libtool \
-            wget \
+            libusb-1.0-0 \
+            libusb-1.0-0-dev \
+            libusb-dev \
+            portaudio19-dev \
+            python3-dev \
+            python3-distutils \
+            python3-mako \
+            python3-numpy \
+            python3-pip \
+            python3-requests \
+            python3-scipy \
+            python3-setuptools \
+            python3-ruamel.yaml \
             qt5-default \
             qt5-gtk-platformtheme \
             qttranslations5-l10n \
-            libqt5svg5-dev \
-            libboost-dev \
-            libpulse-dev \
-            portaudio19-dev \
-            liblog4cpp5-dev \
-            gnuradio-dev \
-            libairspy-dev \
-            libairspyhf-dev \
-            libfreesrp-dev \
-            libhackrf-dev \
-            librtlsdr-dev \
-            libsoapysdr-dev \
             soapysdr-module-remote \
-            libuhd-dev \
-            liborc-0.4-dev \
-            libhidapi-dev
+            wget
+
+          cd /tmp
+          git clone https://github.com/gnuradio/volk.git
+          cd volk
+          git checkout v2.5.1
+          git submodule update --init
+          mkdir build
+          cd build
+          cmake ..
+          make -j4
+          make install
+
+          cd /tmp
+          git clone https://github.com/EttusResearch/uhd.git
+          cd uhd/host
+          git checkout v4.2.0.1
+          mkdir build
+          cd build
+          cmake \
+            -DENABLE_C_API=OFF \
+            -DENABLE_PYTHON_API=False \
+            -DENABLE_EXAMPLES=OFF \
+            -DENABLE_UTILS=OFF \
+            -DENABLE_TESTS=OFF \
+            -DENABLE_SIM=OFF \
+            -DENABLE_OCTOCLOCK=OFF \
+            -DENABLE_DPDK=OFF \
+            -DENABLE_MANUAL=OFF \
+            -DENABLE_DOXYGEN=OFF \
+            -DENABLE_MAN_PAGES=OFF \
+            ..
+          make -j4
+          make install
+
+          cd /tmp
+          git clone https://github.com/gnuradio/gnuradio.git
+          cd gnuradio
+          git checkout v3.9.7.0
+          mkdir build
+          cd build
+          cmake \
+            -DENABLE_DEFAULT=False \
+            -DENABLE_GNURADIO_RUNTIME=True \
+            -DENABLE_GR_ANALOG=True \
+            -DENABLE_GR_AUDIO=True \
+            -DENABLE_GR_BLOCKS=True \
+            -DENABLE_GR_DIGITAL=True \
+            -DENABLE_GR_FFT=True \
+            -DENABLE_GR_FILTER=True \
+            -DENABLE_GR_NETWORK=True \
+            -DENABLE_GR_UHD=True \
+            ..
+          make -j4
+          make install
 
           cd /tmp
           git clone https://github.com/Nuand/bladeRF.git
           cd bladeRF
           mkdir build
           cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+          cmake ..
           make -j4
           make install
           ldconfig
 
+          pip3 install pybind11
+          ln -s /usr/local/lib/python3.6/dist-packages/pybind11/share/cmake/pybind11 /usr/local/lib/cmake/pybind11
+          ln -s /usr/local/lib/python3.6/dist-packages/pybind11/include/pybind11 /usr/local/include/pybind11
           cd /tmp
-          git clone https://github.com/dl1ksv/gr-fcdproplus.git
-          cd gr-fcdproplus
+          git clone https://github.com/dl1ksv/gr-funcube.git
+          cd gr-funcube
+          git checkout df8fdcc3bbe261d900e77e4d4ae4a2f20c3340b2
           mkdir build
           cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr ..
+          cmake ..
           make -j4
           make install
           ldconfig
@@ -70,7 +143,7 @@ jobs:
           git clone https://gitea.osmocom.org/sdr/libosmo-dsp.git
           cd libosmo-dsp
           autoreconf -i
-          ./configure --prefix=/usr
+          ./configure
           make -j4
           make install
           ldconfig
@@ -78,10 +151,9 @@ jobs:
           cd /tmp
           git clone https://gitea.osmocom.org/sdr/gr-iqbal.git
           cd gr-iqbal
-          git checkout gr3.8
           mkdir build
           cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_MODULES_DIR=/usr/lib/x86_64-linux-gnu/cmake ..
+          cmake ..
           make -j4
           make install
           ldconfig
@@ -89,10 +161,9 @@ jobs:
           cd /tmp
           git clone https://gitea.osmocom.org/sdr/gr-osmosdr.git
           cd gr-osmosdr
-          git checkout gr3.8
           mkdir build
           cd build
-          cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_MODULES_DIR=/usr/lib/x86_64-linux-gnu/cmake -DENABLE_PYTHON=False ..
+          cmake -DCMAKE_MODULES_DIR=/usr/lib/x86_64-linux-gnu/cmake -DENABLE_PYTHON=False ..
           make -j4
           make install
           ldconfig
