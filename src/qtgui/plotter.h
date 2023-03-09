@@ -12,6 +12,7 @@
 #define HORZ_DIVS_MAX 12    //50
 #define VERT_DIVS_MIN 5
 #define MAX_SCREENSIZE 16384
+#define MAX_HISTOGRAM_SIZE 100   // Multiples of 4 for alignment
 
 #define PEAK_CLICK_MAX_H_DISTANCE 10 //Maximum horizontal distance of clicked point from peak
 #define PEAK_CLICK_MAX_V_DISTANCE 20 //Maximum vertical distance of clicked point from peak
@@ -43,7 +44,6 @@ public:
     void setDXCSpotsEnabled(bool enabled) { m_DXCSpotsEnabled = enabled; }
 
     void setNewFftData(float *fftData, int size);
-    void setNewFftData(float *fftData, float *wfData, int size);
 
     void setCenterFreq(quint64 f);
     void setFreqUnits(qint32 unit) { m_FreqUnits = unit; }
@@ -122,6 +122,19 @@ public:
     void    setFftRate(int rate_hz);
     void    clearWaterfall();
     bool    saveWaterfall(const QString & filename) const;
+    void    toggleFreeze();
+
+    enum ePlotMode {
+        PLOT_MODE_MAX = 0,
+        PLOT_MODE_AVG = 1,
+        PLOT_MODE_FILLED = 2,
+        PLOT_MODE_HISTOGRAM = 3,
+    };
+
+    enum eWaterfallMode {
+        WATERFALL_MODE_MAX = 0,
+        WATERFALL_MODE_AVG = 1
+    };
 
 signals:
     void newDemodFreq(qint64 freq, qint64 delta); /* delta is the offset from the center */
@@ -131,6 +144,8 @@ signals:
     void pandapterRangeChanged(float min, float max);
     void newZoomLevel(float level);
     void newSize();
+    void markerSelectA(qint64 freq);
+    void markerSelectB(qint64 freq);
 
 public slots:
     // zoom functions
@@ -138,17 +153,23 @@ public slots:
     void moveToCenterFreq();
     void moveToDemodFreq();
     void zoomOnXAxis(float level);
+    void setPlotMode(int mode);
+    void setWaterfallMode(int mode);
+    void setDisplayDbm(int state);
 
     // other FFT slots
     void setFftPlotColor(const QColor& color);
     void setFftFill(bool enabled);
     void setPeakHold(bool enabled);
+    void setMinHold(bool enabled);
+    void setFftAvg(float avg);
     void setFftRange(float min, float max);
     void setWfColormap(const QString &cmap);
     void setPandapterRange(float min, float max);
     void setWaterfallRange(float min, float max);
     void setPeakDetection(bool enabled, float c);
     void toggleBandPlan(bool state);
+    void setMarkers(qint64 a, qint64 b);
     void updateOverlay();
 
     void setPercent2DScreen(int percent)
@@ -175,7 +196,9 @@ private:
         RIGHT,
         YAXIS,
         XAXIS,
-        TAG
+        TAG,
+        MARKER_A,
+        MARKER_B
     };
 
     void        drawOverlay();
@@ -190,19 +213,32 @@ private:
     {
         return ((x > (xr - delta)) && (x < (xr + delta)));
     }
+
     void getScreenIntegerFFTData(qint32 plotHeight, qint32 plotWidth,
                                  float maxdB, float mindB,
-                                 qint64 startFreq, qint64 stopFreq,
-                                 float *inBuf, qint32 *outBuf,
-                                 qint32 *maxbin, qint32 *minbin) const;
+                                 qint64 startFreq, qint64 endFreq,
+                                 const float *fftInBuf,
+                                 qint32 *maxOutBuf, qint32 *avgOutBuf,
+                                 qint32 *histogram, float histMaxdB, float histMindB,
+                                 int *xmin, int *xmax) const;
     static void calcDivSize (qint64 low, qint64 high, int divswanted, qint64 &adjlow, qint64 &step, int& divs);
     void        showToolTip(QMouseEvent* event, QString toolTipText);
 
     bool        m_PeakHoldActive;
     bool        m_PeakHoldValid;
-    qint32      m_fftbuf[MAX_SCREENSIZE]{};
+    bool        m_MinHoldActive;
+    bool        m_MinHoldValid;
+    bool        m_IIRValid;
+    bool        m_histIIRValid;
+    qint32      m_fftMaxBuf[MAX_SCREENSIZE]{};
+    qint32      m_fftAvgBuf[MAX_SCREENSIZE]{};
+    qint32      m_histogram[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
+    double      m_histIIR[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
+    double      m_histMaxIIR;
+    float      *m_fftIIR;
     quint8      m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
     qint32      m_fftPeakHoldBuf[MAX_SCREENSIZE]{};
+    qint32      m_fftMinHoldBuf[MAX_SCREENSIZE]{};
     float      *m_fftData{};     /*! pointer to incoming FFT data */
     float      *m_wfData{};
     int         m_fftDataSize{};
@@ -211,6 +247,7 @@ private:
     int         m_YAxisWidth{};
 
     eCapturetype    m_CursorCaptured;
+    bool        m_Frozen;           // Waterfall is frozen - pixmap will not be rendered
     QPixmap     m_2DPixmap;
     QPixmap     m_OverlayPixmap;
     QPixmap     m_WaterfallPixmap;
@@ -223,6 +260,8 @@ private:
     qint64      m_CenterFreq;       // The HW frequency
     qint64      m_FftCenter;        // Center freq in the -span ... +span range
     qint64      m_DemodCenterFreq;
+    qint64      m_MarkerFreqA;
+    qint64      m_MarkerFreqB;
     qint64      m_StartFreqAdj{};
     qint64      m_FreqPerDiv{};
     bool        m_CenterLineEnabled;  /*!< Distinguish center line. */
@@ -237,6 +276,8 @@ private:
     int         m_DemodFreqX{};       //screen coordinate x position
     int         m_DemodHiCutFreqX{};  //screen coordinate x position
     int         m_DemodLowCutFreqX{}; //screen coordinate x position
+    int         m_MarkerAX{};
+    int         m_MarkerBX{};
     int         m_CursorCaptureDelta;
     int         m_GrabPosition;
     int         m_Percent2DScreen;
@@ -254,12 +295,16 @@ private:
     float       m_PandMaxdB;
     float       m_WfMindB;
     float       m_WfMaxdB;
+    double      m_alpha;     /*!< IIR averaging. */
 
     qint64      m_Span;
     float       m_SampleFreq;    /*!< Sample rate. */
     qint32      m_FreqUnits;
     int         m_ClickResolution;
     int         m_FilterClickResolution;
+    ePlotMode   m_PlotMode;
+    eWaterfallMode m_WaterfallMode;
+    bool d_display_dbm;
 
     int         m_Xzero{};
     int         m_Yzero{};  /*!< Used to measure mouse drag direction. */
@@ -272,7 +317,7 @@ private:
 
     quint32     m_LastSampleRate{};
 
-    QColor      m_FftColor, m_FftFillCol, m_PeakHoldColor;
+    QColor      m_avgFftColor, m_maxFftColor, m_FftFillCol, m_PeakHoldColor, m_MinHoldColor;
     bool        m_FftFill{};
 
     float       m_PeakDetection{};

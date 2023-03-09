@@ -67,6 +67,8 @@ public:
 
 public slots:
     void setNewFrequency(qint64 rx_freq);
+    void setMarkerA(qint64 freq);
+    void setMarkerB(qint64 freq);
 
 private:
     Ui::MainWindow *ui;
@@ -78,14 +80,16 @@ private:
 
     qint64 d_lnb_lo;  /* LNB LO in Hz. */
     qint64 d_hw_freq;
+    qint64 d_marker_a;
+    qint64 d_marker_b;
     qint64 d_hw_freq_start{};
     qint64 d_hw_freq_stop{};
 
     enum receiver::filter_shape d_filter_shape;
     std::complex<float>* d_fftData;
     float          *d_realFftData;
-    float          *d_iirFftData;
     float           d_fftAvg;      /*!< FFT averaging parameter set by user (not the true gain). */
+    float           d_fps;
 
     bool d_have_audio;  /*!< Whether we have audio (i.e. not with demod_off. */
 
@@ -120,15 +124,19 @@ private:
     // dummy widget to enforce linking to QtSvg
     QSvgWidget      *qsvg_dummy;
 
+    QFont font;
+
 private:
     void updateHWFrequencyRange(bool ignore_limits);
     void updateFrequencyRange();
+    void updateDeltaAndCenter();
     void updateGainStages(bool read_from_device);
     void showSimpleTextFile(const QString &resource_path,
                             const QString &window_title);
     /* key shortcuts */
     void frequencyFocusShortcut();
     void rxOffsetZeroShortcut();
+    void toggleFreezeShortcut();
 
 private slots:
     /* RecentConfig */
@@ -189,13 +197,14 @@ private slots:
     void setIqFftSize(int size);
     void setIqFftRate(int fps);
     void setIqFftWindow(int type);
+    void setIqRbw(int rbw);
     void setIqFftSplit(int pct_wf);
-    void setIqFftAvg(float avg);
     void setAudioFftRate(int fps);
     void setFftColor(const QColor& color);
     void setFftFill(bool enable);
     void setPeakDetection(bool enabled);
     void setFftPeakHold(bool enable);
+    void setFftMinHold(bool enable);
     void setWfTimeSpan(quint64 span_ms);
     void setWfSize();
 
@@ -232,6 +241,11 @@ private slots:
     void on_actionAddBookmark_triggered();
     void on_actionDX_Cluster_triggered();
 
+    /* markers*/
+    void on_setMarkerButtonA_clicked();
+    void on_setMarkerButtonB_clicked();
+    void on_clearMarkerButtonA_clicked();
+    void on_clearMarkerButtonB_clicked();
 
     /* window close signals */
     void afsk1200win_closed();

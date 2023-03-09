@@ -20,6 +20,7 @@
  * the Free Software Foundation, Inc., 51 Franklin Street,
  * Boston, MA 02110-1301, USA.
  */
+#include <math.h>
 #include <QString>
 #include <QSettings>
 #include <QDebug>
@@ -48,6 +49,7 @@ DockFft::DockFft(QWidget *parent) :
     // buttons can be smaller than 50x32
     ui->peakDetectionButton->setMinimumSize(48, 24);
     ui->peakHoldButton->setMinimumSize(48, 24);
+    ui->minHoldButton->setMinimumSize(48, 24);
     ui->lockButton->setMinimumSize(48, 24);
     ui->resetButton->setMinimumSize(48, 24);
     ui->centerButton->setMinimumSize(48, 24);
@@ -217,6 +219,11 @@ void DockFft::saveSettings(QSettings *settings)
     else
         settings->remove("averaging");
 
+    if (ui->dbmBox->checkState())
+        settings->setValue("display_dbm_hz", true);
+    else
+        settings->remove("display_dbm_hz");
+
     if (ui->fftSplitSlider->value() != DEFAULT_FFT_SPLIT)
         settings->setValue("split", ui->fftSplitSlider->value());
     else
@@ -281,6 +288,11 @@ void DockFft::saveSettings(QSettings *settings)
     else
         settings->remove("peak_hold");
 
+    if (ui->minHoldButton->isChecked())
+        settings->setValue("min_hold", true);
+    else
+        settings->remove("min_hold");
+
     if (QString::compare(ui->cmapComboBox->currentData().toString(), DEFAULT_COLORMAP))
         settings->setValue("waterfall_colormap", ui->cmapComboBox->currentData().toString());
     else
@@ -291,6 +303,12 @@ void DockFft::saveSettings(QSettings *settings)
         settings->setValue("fft_zoom", ui->fftZoomSlider->value());
     else
         settings->remove("fft_zoom");
+
+    intval = ui->waterfallModeBox->currentIndex();
+    if (intval != 0)
+        settings->setValue("waterfall_mode", intval);
+    else
+        settings->remove("waterfall_mode");
 
     settings->endGroup();
 }
@@ -328,6 +346,9 @@ void DockFft::readSettings(QSettings *settings)
     intval = settings->value("averaging", DEFAULT_FFT_AVG).toInt(&conv_ok);
     if (conv_ok)
         ui->fftAvgSlider->setValue(intval);
+
+    bool_val = settings->value("display_dbm_hz", false).toBool();
+    ui->dbmBox->setChecked(bool_val);
 
     intval = settings->value("split", DEFAULT_FFT_SPLIT).toInt(&conv_ok);
     if (conv_ok)
@@ -371,6 +392,10 @@ void DockFft::readSettings(QSettings *settings)
     ui->peakHoldButton->setChecked(bool_val);
     emit fftPeakHoldToggled(bool_val);
 
+    bool_val = settings->value("min_hold", false).toBool();
+    ui->minHoldButton->setChecked(bool_val);
+    emit fftMinHoldToggled(bool_val);
+
     QString cmap = settings->value("waterfall_colormap", "gqrx").toString();
     ui->cmapComboBox->setCurrentIndex(ui->cmapComboBox->findData(cmap));
 
@@ -378,6 +403,10 @@ void DockFft::readSettings(QSettings *settings)
     intval = settings->value("fft_zoom", DEFAULT_FFT_ZOOM).toInt(&conv_ok);
     if (conv_ok)
         ui->fftZoomSlider->setValue(intval);
+
+    intval = settings->value("waterfall_mode", 0).toInt(&conv_ok);
+    if (conv_ok && intval >=0 && intval <=2)
+        ui->waterfallModeBox->setCurrentIndex(intval);
 
     settings->endGroup();
 }
@@ -433,6 +462,11 @@ void DockFft::on_fftWinComboBox_currentIndexChanged(int index)
     emit fftWindowChanged(index);
 }
 
+void DockFft::on_dbmBox_stateChanged(int state)
+{
+    emit displayDbmChanged(state);
+}
+
 static const quint64 wf_span_table[] =
 {
     0,              // Auto
@@ -481,7 +515,12 @@ void DockFft::on_fftSplitSlider_valueChanged(int value)
 /** FFT filter gain changed. */
 void DockFft::on_fftAvgSlider_valueChanged(int value)
 {
-    float avg = 1.0 - 1.0e-2 * ((float)value);
+    // Limit avg to < 1.0 here, since dockfft knows the max int value of the
+    // slider.
+    const float v = value;
+    const float x = ui->fftAvgSlider->maximum();
+    const float limit = 1.0 - 1.0/x;
+    const float avg = 1.0 - limit * v / x;
 
     emit fftAvgChanged(avg);
 }
@@ -491,6 +530,16 @@ void DockFft::on_fftZoomSlider_valueChanged(int level)
 {
     ui->zoomLevelLabel->setText(QString("%1x").arg(level));
     emit fftZoomChanged((float)level);
+}
+
+void DockFft::on_waterfallModeBox_currentIndexChanged(int index)
+{
+    emit waterfallModeChanged(index);
+}
+
+void DockFft::on_plotModeBox_currentIndexChanged(int index)
+{
+    emit plotModeChanged(index);
 }
 
 void DockFft::on_pandRangeSlider_valuesChanged(int min, int max)
@@ -544,6 +593,12 @@ void DockFft::on_fillButton_toggled(bool checked)
 void DockFft::on_peakHoldButton_toggled(bool checked)
 {
     emit fftPeakHoldToggled(checked);
+}
+
+/** minHold button toggled */
+void DockFft::on_minHoldButton_toggled(bool checked)
+{
+    emit fftMinHoldToggled(checked);
 }
 
 /** peakDetection button toggled */

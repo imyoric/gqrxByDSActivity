@@ -35,7 +35,7 @@
 #include <chrono>
 
 
-#define MAX_FFT_SIZE 1048576
+#define MAX_FFT_SIZE (1024 * 1024 * 4)
 #define AUDIO_BUFFER_SIZE 65536
 
 class rx_fft_c;
@@ -90,6 +90,7 @@ public:
     void get_fft_data(std::complex<float>* fftPoints, unsigned int &fftSize);
 
     void set_window_type(int wintype);
+    void set_rbw(int rbw);
     int  get_window_type() const;
 
     void set_fft_size(unsigned int fftsize);
@@ -100,6 +101,7 @@ private:
     unsigned int d_fftsize;   /*! Current FFT size. */
     double       d_quadrate;
     int          d_wintype;   /*! Current window type. */
+    float        d_rbw;
 
     std::mutex   d_mutex;  /*! Used to lock FFT output buffer. */
 
