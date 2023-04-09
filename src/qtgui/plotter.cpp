@@ -727,21 +727,29 @@ void CPlotter::mousePressEvent(QMouseEvent * event)
                     // ignore if data source is not valid
                     if (m_fftDataSize && ((selectBuf != m_fftPeakHoldBuf) || m_PeakHoldValid))
                     {
-                        // Ignore clicks above the plot, below the pandapter, or when uninitialized
+                        // Ignore clicks exactly on the plot, below the
+                        // pandapter, or when uninitialized
                         int h = m_2DPixmap.height() / m_DPR;
-                        if (event->y() > selectBuf[event->x()]
+                        if (event->y() != selectBuf[event->x()]
                             && event->y() < h
                             && m_fftDataSize > 0)
                         {
                             int xLeft = event->x();
                             int xRight = event->x();
-                            for(; xLeft > 0 && selectBuf[xLeft] < event->y(); --xLeft);
-                            for(; xRight < m_fftDataSize && selectBuf[xRight] < event->y(); ++xRight);
+                            // Select span below the plot
+                            if (event->y() > selectBuf[event->x()])
+                            {
+                                for(; xLeft > 0 && selectBuf[xLeft] < event->y(); --xLeft);
+                                for(; xRight < m_fftDataSize && selectBuf[xRight] < event->y(); ++xRight);
+                            }
+                            // Select span above the plot
+                            else
+                            {
+                                for(; xLeft > 0 && selectBuf[xLeft] > event->y(); --xLeft);
+                                for(; xRight < m_fftDataSize && selectBuf[xRight] > event->y(); ++xRight);
+                            }
                             qint64 freqLeft = freqFromX(xLeft);
                             qint64 freqRight = freqFromX(xRight);
-
-                            // setMarkers slot calls drawOverlay() so no need to call here
-                            //setMarkers(freqLeft, freqRight);
 
                             emit markerSelectA(freqLeft);
                             emit markerSelectB(freqRight);
