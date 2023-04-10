@@ -12,7 +12,7 @@
 #define HORZ_DIVS_MAX 12    //50
 #define VERT_DIVS_MIN 5
 #define MAX_SCREENSIZE 16384
-#define MAX_HISTOGRAM_SIZE 100   // Multiples of 4 for alignment
+#define HISTOGRAM_SIZE 100   // Multiples of 4 for alignment
 
 #define PEAK_CLICK_MAX_H_DISTANCE 10 //Maximum horizontal distance of clicked point from peak
 #define PEAK_CLICK_MAX_V_DISTANCE 20 //Maximum vertical distance of clicked point from peak
@@ -214,13 +214,6 @@ private:
         return ((x > (xr - delta)) && (x < (xr + delta)));
     }
 
-    void getScreenIntegerFFTData(qint32 plotHeight, qint32 plotWidth,
-                                 float maxdB, float mindB,
-                                 qint64 startFreq, qint64 endFreq,
-                                 const float *fftInBuf,
-                                 qint32 *maxOutBuf, qint32 *avgOutBuf,
-                                 qint32 *histogram, float histMaxdB, float histMindB,
-                                 int *xmin, int *xmax) const;
     static void calcDivSize (qint64 low, qint64 high, int divswanted, qint64 &adjlow, qint64 &step, int& divs);
     void        showToolTip(QMouseEvent* event, QString toolTipText);
 
@@ -230,15 +223,17 @@ private:
     bool        m_MinHoldValid;
     bool        m_IIRValid;
     bool        m_histIIRValid;
-    qint32      m_fftMaxBuf[MAX_SCREENSIZE]{};
-    qint32      m_fftAvgBuf[MAX_SCREENSIZE]{};
-    qint32      m_histogram[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
-    double      m_histIIR[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
+    float       m_fftMaxBuf[MAX_SCREENSIZE]{};
+    float       m_fftAvgBuf[MAX_SCREENSIZE]{};
+    float       m_wfMaxBuf[MAX_SCREENSIZE]{};
+    float       m_wfAvgBuf[MAX_SCREENSIZE]{};
+    qint32      m_histogram[MAX_SCREENSIZE][HISTOGRAM_SIZE]{};
+    double      m_histIIR[MAX_SCREENSIZE][HISTOGRAM_SIZE]{};
     double      m_histMaxIIR;
     float      *m_fftIIR;
     quint8      m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
-    qint32      m_fftPeakHoldBuf[MAX_SCREENSIZE]{};
-    qint32      m_fftMinHoldBuf[MAX_SCREENSIZE]{};
+    float       m_fftPeakHoldBuf[MAX_SCREENSIZE]{};
+    float       m_fftMinHoldBuf[MAX_SCREENSIZE]{};
     float      *m_fftData{};     /*! pointer to incoming FFT data */
     float      *m_wfData{};
     int         m_fftDataSize{};
@@ -248,8 +243,8 @@ private:
 
     eCapturetype    m_CursorCaptured;
     bool        m_Frozen;           // Waterfall is frozen - pixmap will not be rendered
-    QPixmap     m_2DPixmap;
-    QPixmap     m_OverlayPixmap;
+    QPixmap     m_2DPixmap;         // Composite of everything displayed in the 2D plotter area
+    QPixmap     m_OverlayPixmap;    // Grid, axes ... things that need to be drawn infrequently
     QPixmap     m_WaterfallPixmap;
     QColor      m_ColorTbl[256];
     QSize       m_Size;
@@ -321,7 +316,7 @@ private:
     bool        m_FftFill{};
 
     float       m_PeakDetection{};
-    QMap<int,int>   m_Peaks;
+    QMap<int,float>   m_Peaks;
 
     QList< QPair<QRect, qint64> >     m_Taglist;
 

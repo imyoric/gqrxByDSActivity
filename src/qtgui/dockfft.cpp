@@ -224,6 +224,18 @@ void DockFft::saveSettings(QSettings *settings)
     else
         settings->remove("display_dbm_hz");
 
+    intval = ui->plotModeBox->currentIndex();
+    if (intval != 0)
+        settings->setValue("plot_mode", intval);
+    else
+        settings->remove("plot_mode");
+
+    intval = ui->waterfallModeBox->currentIndex();
+    if (intval != 0)
+        settings->setValue("waterfall_mode", intval);
+    else
+        settings->remove("waterfall_mode");
+
     if (ui->fftSplitSlider->value() != DEFAULT_FFT_SPLIT)
         settings->setValue("split", ui->fftSplitSlider->value());
     else
@@ -349,6 +361,14 @@ void DockFft::readSettings(QSettings *settings)
 
     bool_val = settings->value("display_dbm_hz", false).toBool();
     ui->dbmBox->setChecked(bool_val);
+
+    intval = settings->value("plot_mode", 0).toInt(&conv_ok);
+    if (conv_ok)
+        ui->plotModeBox->setCurrentIndex(intval);
+
+    intval = settings->value("waterfall_mode", 0).toInt(&conv_ok);
+    if (conv_ok)
+        ui->waterfallModeBox->setCurrentIndex(intval);
 
     intval = settings->value("split", DEFAULT_FFT_SPLIT).toInt(&conv_ok);
     if (conv_ok)

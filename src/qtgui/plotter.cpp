@@ -160,7 +160,7 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
 
     m_FreqDigits = 6;
 
-    m_Peaks = QMap<int,int>();
+    m_Peaks = QMap<int,float>();
     setPeakDetection(false, 2);
 
     setFftPlotColor(QColor(0xFF,0xFF,0xFF,0xFF));
@@ -189,7 +189,6 @@ QSize CPlotter::sizeHint() const
 
 void CPlotter::mouseMoveEvent(QMouseEvent* event)
 {
-
     QPoint pt = event->pos();
 
     /* mouse enter / mouse leave events */
@@ -547,15 +546,15 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
 
 int CPlotter::getNearestPeak(QPoint pt)
 {
-    QMap<int, int>::const_iterator i = m_Peaks.lowerBound(pt.x() - PEAK_CLICK_MAX_H_DISTANCE);
-    QMap<int, int>::const_iterator upperBound = m_Peaks.upperBound(pt.x() + PEAK_CLICK_MAX_H_DISTANCE);
+    QMap<int, float>::const_iterator i = m_Peaks.lowerBound(pt.x() - PEAK_CLICK_MAX_H_DISTANCE);
+    QMap<int, float>::const_iterator upperBound = m_Peaks.upperBound(pt.x() + PEAK_CLICK_MAX_H_DISTANCE);
     float   dist = 1.0e10;
     int     best = -1;
 
     for ( ; i != upperBound; i++)
     {
         int x = i.key();
-        int y = i.value();
+        float y = i.value();
 
         if (abs(y - pt.y()) > PEAK_CLICK_MAX_V_DISTANCE)
             continue;
@@ -682,7 +681,6 @@ void CPlotter::setFftRate(int rate_hz)
 // Called when a mouse button is pressed
 void CPlotter::mousePressEvent(QMouseEvent * event)
 {
-    QFontMetrics metrics(m_Font);
     QPoint pt = event->pos();
 
     if (NOCAP == m_CursorCaptured)
@@ -716,7 +714,7 @@ void CPlotter::mousePressEvent(QMouseEvent * event)
                     // shift: max data
                     // ctrl: average data
                     // ctrl-shift: peak hold data
-                    qint32 *selectBuf = nullptr;
+                    float *selectBuf = nullptr;
                     if (ctrl_or_shift == Qt::ShiftModifier)
                         selectBuf = m_fftMaxBuf;
                     else if (ctrl_or_shift == (Qt::ControlModifier))
@@ -727,26 +725,32 @@ void CPlotter::mousePressEvent(QMouseEvent * event)
                     // ignore if data source is not valid
                     if (m_fftDataSize && ((selectBuf != m_fftPeakHoldBuf) || m_PeakHoldValid))
                     {
+                        // Find the data value of the click y()
+                        const double panHeight = m_2DPixmap.height() / m_DPR;
+                        const double panddBGainFactor = panHeight / fabs(m_PandMaxdB - m_PandMindB);
+                        const double vlog = m_PandMaxdB - event->y() / panddBGainFactor;
+                        const float v = powf(10.0, vlog / 10.0);
+                        printf("%lf dB\n", vlog);
+
                         // Ignore clicks exactly on the plot, below the
                         // pandapter, or when uninitialized
-                        int h = m_2DPixmap.height() / m_DPR;
-                        if (event->y() != selectBuf[event->x()]
-                            && event->y() < h
+                        if (v != selectBuf[event->x()]
+                            && event->y() < panHeight
                             && m_fftDataSize > 0)
                         {
                             int xLeft = event->x();
                             int xRight = event->x();
                             // Select span below the plot
-                            if (event->y() > selectBuf[event->x()])
+                            if (v < selectBuf[event->x()])
                             {
-                                for(; xLeft > 0 && selectBuf[xLeft] < event->y(); --xLeft);
-                                for(; xRight < m_fftDataSize && selectBuf[xRight] < event->y(); ++xRight);
+                                for(; xLeft > 0 && selectBuf[xLeft] > v; --xLeft);
+                                for(; xRight < m_fftDataSize && selectBuf[xRight] > v; ++xRight);
                             }
                             // Select span above the plot
                             else
                             {
-                                for(; xLeft > 0 && selectBuf[xLeft] > event->y(); --xLeft);
-                                for(; xRight < m_fftDataSize && selectBuf[xRight] > event->y(); ++xRight);
+                                for(; xLeft > 0 && selectBuf[xLeft] < v; --xLeft);
+                                for(; xRight < m_fftDataSize && selectBuf[xRight] < v; ++xRight);
                             }
                             qint64 freqLeft = freqFromX(xLeft);
                             qint64 freqRight = freqFromX(xRight);
@@ -919,6 +923,8 @@ void CPlotter::zoomOnXAxis(float level)
 void CPlotter::setPlotMode(int mode)
 {
     m_PlotMode = (ePlotMode)mode;
+    m_PeakHoldValid = false;
+    m_MinHoldValid = false;
 }
 
 void CPlotter::setWaterfallMode(int mode)
@@ -1067,14 +1073,12 @@ void CPlotter::paintEvent(QPaintEvent *)
 // Called to update spectrum data for displaying on the screen
 void CPlotter::draw()
 {
-    int     i, j;
-    int     xmin, xmax;
+    qint32  i, j, x;
+    qint32  xmin, xmax;
     double  histMax, histTotal;
 
     // TODO: make into a setting?
     const bool histogramFastAttack = false;
-
-    QFontMetrics metrics(m_Font);
 
     if (m_DrawOverlay)
     {
@@ -1088,53 +1092,213 @@ void CPlotter::draw()
     if (!m_Running)
         return;
 
-    const int wfWidth = m_WaterfallPixmap.width();
-    const int wfHeight = m_WaterfallPixmap.height();
-    const int panWidth = m_2DPixmap.width();
-    const int panHeight = m_2DPixmap.height();
+    const double wfWidth = m_WaterfallPixmap.width() / m_DPR;
+    const double wfHeight = m_WaterfallPixmap.height() / m_DPR;
+    const double panWidth = m_2DPixmap.width() / m_DPR;
+    const double panHeight = m_2DPixmap.height() / m_DPR;
 
-    // Calculate histogram only if it will be used
-    qint32 *histogram = (m_PlotMode == PLOT_MODE_HISTOGRAM ?
-                         (qint32 *)&m_histogram : nullptr);
+    bool doPlotter = panWidth > 0 && panHeight > 0;
+    bool doWaterfall = wfWidth > 0 && wfHeight > 0;
+    bool doHistogram = m_PlotMode == PLOT_MODE_HISTOGRAM;
 
+    // Scale plotter for graph height
+    const double panddBGainFactor = panHeight / fabs(m_PandMaxdB - m_PandMindB);
+    // Scale waterfall and histogram for colormap
+    const double wfdBGainFactor = 256.0 / fabs(m_WfMaxdB - m_WfMindB);
+    const double histdBGainFactor = (double)HISTOGRAM_SIZE / fabs(m_PandMaxdB - m_PandMindB);
 
-    // get data scaled for waterfall, from non-averaged fft
-    // get histogram data scaled for 2D plot, from non-averaged fft
-    // Note: assumes wfWidth == panWidth, which is always the case now.
-    // Note: called even if no histogram or waterfall, but will be refactored later
-    getScreenIntegerFFTData(256, qMin(wfWidth, MAX_SCREENSIZE),
-                            m_WfMaxdB, m_WfMindB,
-                            m_FftCenter - (qint64)m_Span / 2,
-                            m_FftCenter + (qint64)m_Span / 2,
-                            m_fftData, m_fftMaxBuf, m_fftAvgBuf,
-                            histogram, m_PandMaxdB, m_PandMindB,
-                            &xmin, &xmax);
+    const double fftSize = m_fftDataSize;
+    const double sampleFreq = m_SampleFreq;
+
+    const double startFreq = (double)m_FftCenter - (double)m_Span / 2.0;
+    const double endFreq = (double)m_FftCenter + (double)m_Span / 2.0;
+
+    // Start and end fft bins for requested frequency offsets. These values
+    // could be outside the actual fft data range, since the display can be
+    // shifted past limits while zooming.
+    const qint32 startBin = std::min(startFreq * fftSize / sampleFreq + fftSize / 2.0, fftSize - 1);
+    const qint32 endBin = std::max(endFreq * fftSize / sampleFreq + fftSize / 2.0, (double)startBin);
+
+    // Start and end FFT bins to be displayed, clipped to valid fft bins
+    const qint32 minbin = std::max(startBin, 0);
+    const qint32 maxbin = std::min(endBin, m_fftDataSize - 1);
+
+    // Note: making assumption that 2D plot and waterfall are the same width,
+    // as the are today. If this changes, xmin and xmax need to be calculated
+    // separately for each. Much easier and more efficient if they stay the same.
+    const double plotWidth = panWidth;
+
+    // Number of bins mapped across plot, taking zoom into account
+    const double numBins = endBin - startBin;
+    // Pixels per mapped bin
+    const double xScale = plotWidth / numBins;
+
+    // Initialize results
+    memset(m_fftMaxBuf, 0, sizeof(m_fftMaxBuf));
+    memset(m_fftAvgBuf, 0, sizeof(m_fftAvgBuf));
+    if (doHistogram)
+        memset(m_histogram, 0, sizeof(m_histogram));
+
+    // Scale for V/RBW or dBm/Hz into 50 ohms
+    float _pwr_scale;
+    if (d_display_dbm)
+        _pwr_scale = 1000.0 / (2.0 * fftSize * sampleFreq * 50.0);
+    else
+        _pwr_scale = 1.0 / fftSize / fftSize;
+    const float pwr_scale = _pwr_scale;
+
+    // Peak means "peak of average" in AVG mode, else "peak of max"
+    const bool peakIsAverage = m_PlotMode == PLOT_MODE_AVG;
+    // Min mean "min of peak" in PEAK mode, else "min of average"
+    const bool minIsAverage = m_PlotMode != PLOT_MODE_MAX;
+
+    xmin = qRound((double)(minbin - startBin) * xScale);
+    xmax = qRound((double)(maxbin - startBin) * xScale);
+    qint32 xprev = xmin;
+    float vmax;
+    float vmaxIIR;
+    double vsum;
+    double vsumIIR;
+    qint32 count;
+    bool first = true;
+
+    if (numBins >= panWidth)
+    {
+        for(qint32 i = minbin; i <= maxbin; i++)
+        {
+            x = qRound((double)(i - startBin) * xScale);
+
+            // Plot uses IIR output. Histogram and waterfall use raw fft data.
+            // const float v = 10.0 * log10f(m_fftData[i] * pwr_scale);
+            // const float viir = 10.0 * log10f(m_fftIIR[i] * pwr_scale);
+            const float v = m_fftData[i] * pwr_scale;
+            const float viir = m_fftIIR[i] * pwr_scale;
+
+            if (first)
+            {
+                vmax = v;
+                vmaxIIR = viir;
+                vsum = v;
+                vsumIIR = viir;
+                count = 1;
+            }
+
+            // Histogram increments the appropriate bin for each value. Ignore
+            // out-of-range values, rather than clipping.
+            if (doHistogram)
+            {
+                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - 10.0 * log10(v)));
+                if (bin >= 0 && bin < HISTOGRAM_SIZE)
+                {
+                    m_histogram[x][bin] += 1;
+                }
+            }
+
+            // New (or last) pixel - output values
+            if (x != xprev || i == maxbin)
+            {
+
+                m_wfMaxBuf[xprev] = vmax;
+                m_fftMaxBuf[xprev] = vmaxIIR;
+
+                const float vavg = vsum / count;
+                m_wfAvgBuf[xprev] = vavg;
+                const float vavgIIR = vsumIIR / count;
+                m_fftAvgBuf[xprev] = vavgIIR;
+
+                // New peak hold value if greater, or reset
+                const float currentPeak = m_fftPeakHoldBuf[xprev];
+                const float newPeak = peakIsAverage ? vavgIIR : vmaxIIR;
+                m_fftPeakHoldBuf[xprev] = m_PeakHoldValid ? std::max(currentPeak, newPeak) : newPeak;
+
+                // New min hold value if less, or reset
+                const float currentMin = m_fftMinHoldBuf[xprev];
+                const float newMin = minIsAverage ? vavgIIR : vmaxIIR;
+                m_fftMinHoldBuf[xprev] = m_MinHoldValid ? std::min(currentMin, newMin) : newMin;
+
+                vmax = v;
+                vmaxIIR = viir;
+                vsum = v;
+                vsumIIR = viir;
+                count = 1;
+                xprev = x;
+            }
+
+            else if (!first)
+            {
+                vmax = std::max(v, vmax);
+                vmaxIIR = std::max(viir, vmaxIIR);
+                vsum += v;
+                vsumIIR += viir;
+                ++count;
+            }
+
+            first = false;
+        }
+
+        m_PeakHoldValid = true;
+        m_MinHoldValid = true;
+    }
+    // panWidth > m_fftDataSize uses no averaging
+    else
+    {
+        for (i = 0; i < panWidth; i++)
+        {
+            j = qRound((double)(startBin + i) / xScale);
+            const float v = m_fftData[j] * pwr_scale;
+            const float viir = m_fftIIR[j] * pwr_scale;
+
+            m_wfMaxBuf[i] = v;
+            m_wfAvgBuf[i] = v;
+            m_fftMaxBuf[i] = viir;
+            m_fftAvgBuf[i] = viir;
+
+            // New peak hold value if greater, or reset
+            const float currentPeak = m_fftPeakHoldBuf[i];
+            m_fftPeakHoldBuf[i] = m_PeakHoldValid ? std::max(currentPeak, viir) : viir;
+
+            // New min hold value if less, or reset
+            const float currentMin = m_fftMinHoldBuf[i];
+            m_fftMinHoldBuf[i] = m_MinHoldValid ? std::min(currentMin, viir) : viir;
+
+            // Histogram increments the appropriate bin for each value. Ignore
+            // out-of-range values, rather than clipping.
+            if (doHistogram)
+            {
+                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - 10.0 * log10(v)));
+                if (bin >= 0 && bin < HISTOGRAM_SIZE)
+                {
+                    m_histogram[i][bin] += 1;
+                }
+            }
+        }
+    }
 
     // get/draw the waterfall
     // no need to draw if pixmap is invisible
-    if (wfWidth > 0 && wfHeight > 0)
+    if (doWaterfall)
     {
-        const int w = wfWidth;
-        const int h = wfHeight;
+        const qint32 w = qRound(wfWidth);
+        const qint32 h = qRound(wfHeight);
         const quint64 tnow_ms = QDateTime::currentMSecsSinceEpoch();
 
         // Pick max or avg for waterfall
-        qint32 *dataSource;
+        float *dataSource;
         if (m_WaterfallMode == WATERFALL_MODE_AVG)
-            dataSource = m_fftAvgBuf;
+            dataSource = m_wfAvgBuf;
         else
-            dataSource = m_fftMaxBuf;
+            dataSource = m_wfMaxBuf;
 
         if (msec_per_wfline > 0)
         {
             // not in "auto" mode, so accumulate waterfall data
-            for (i = 0; i < qMin(wfWidth, MAX_SCREENSIZE); i++)
+            for (i = 0; i < qMin(w, MAX_SCREENSIZE); i++)
             {
                 // average
                 //m_wfbuf[i] = (m_wfbuf[i] + m_fftbuf[i]) / 2;
 
                 // peak (0..255 where 255 is min)
-                if (dataSource[i] < m_wfbuf[i])
+                if (dataSource[i] > m_wfbuf[i])
                     m_wfbuf[i] = dataSource[i];
             }
         }
@@ -1151,10 +1315,8 @@ void CPlotter::draw()
 
             // draw new line of fft data at top of waterfall bitmap
             painter1.setPen(QColor(0, 0, 0));
-            for (i = 0; i < xmin; i++)
-                painter1.drawPoint(i, 0);
-            for (i = xmax; i < w; i++)
-                painter1.drawPoint(i, 0);
+            painter1.drawRect(QRect(0.0, 0.0, xmin, 1.0));
+            painter1.drawRect(QRect(xmax, 0.0, w, 1.0));
 
             if (msec_per_wfline > 0)
             {
@@ -1162,7 +1324,7 @@ void CPlotter::draw()
                 for (i = xmin; i < xmax; i++)
                 {
                     painter1.setPen(m_ColorTbl[255 - m_wfbuf[i]]);
-                    painter1.drawPoint(i, 0);
+                    painter1.drawRect(QRect(i, 0.0, 1.0, 1.0));
                     m_wfbuf[i] = 255;
                 }
             }
@@ -1170,50 +1332,36 @@ void CPlotter::draw()
             {
                 for (i = xmin; i < xmax; i++)
                 {
-                    painter1.setPen(m_ColorTbl[255 - dataSource[i]]);
-                    painter1.drawPoint(i, 0);
+                    qint32 cidx = qRound((m_WfMaxdB - 10.0 * log10(dataSource[i])) * wfdBGainFactor);
+                    painter1.setPen(m_ColorTbl[255 - cidx]);
+                    painter1.drawRect(QRect(i, 0.0, 1.0, 1.0));
                 }
             }
         }
     }
 
     // get/draw the 2D spectrum
-    if (panWidth > 0 && panHeight > 0)
+    if (doPlotter)
     {
-        const int w = panWidth / m_DPR;
-        // subtract font height from available area to protect freq labels
-        const int h = panHeight / m_DPR - metrics.height();
-
-        // first copy into 2Dbitmap the overlay bitmap.
-        m_2DPixmap = m_OverlayPixmap.copy(m_OverlayPixmap.rect());
-
+        m_2DPixmap.fill(PLOTTER_BGD_COLOR);
         QPainter painter2(&m_2DPixmap);
-
-        // get data scaled for the pandapter, from averaged fft
-        getScreenIntegerFFTData(h, qMin(w, MAX_SCREENSIZE),
-                                m_PandMaxdB, m_PandMindB,
-                                m_FftCenter - (qint64)m_Span/2,
-                                m_FftCenter + (qint64)m_Span/2,
-                                m_fftIIR, m_fftMaxBuf, m_fftAvgBuf,
-                                nullptr, m_PandMaxdB, m_PandMindB,
-                                &xmin, &xmax);
 
         const int npts = xmax - xmin;
 
         // Update histogram IIR
         if (m_PlotMode == PLOT_MODE_HISTOGRAM)
         {
-            constexpr double gamma = 8.0;
-            const double a1 = pow(1.0 - m_alpha, gamma / (double)fft_rate);
-            const double a = 1.0 - a1;
+            constexpr float gamma = 8.0;
+            const float a1 = powf(1.0 - m_alpha, gamma / (double)fft_rate);
+            const float a = 1.0 - a1;
             histMax = 0.0;
             histTotal = 0.0;
             for (i = 0; i < npts; ++i) {
-                for (j = 0; j < MAX_HISTOGRAM_SIZE; ++j)
+                for (j = 0; j < HISTOGRAM_SIZE; ++j)
                 {
                     double histV;
-                    const double histPrev = m_histIIR[i][j];
-                    const double histNew = histogram[i * MAX_HISTOGRAM_SIZE + j];
+                    const float histPrev = m_histIIR[i][j];
+                    const float histNew = m_histogram[i][j];
                     // Fast response up, alpha response down
                     if (!m_histIIRValid)
                         histV = histNew;
@@ -1277,19 +1425,26 @@ void CPlotter::draw()
             maxMarker = std::max(ax, bx);
         }
 
-        const double binSizeY = (double)h / (double)MAX_HISTOGRAM_SIZE;
+        const double binSizeY = panHeight / (double)HISTOGRAM_SIZE;
         for (i = 0; i < npts; i++)
         {
+            const double yMaxD = std::max(std::min(
+                panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMaxBuf[i + xmin])),
+                panHeight), 0.0);
+            const double yAvgD = std::max(std::min(
+                panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftAvgBuf[i + xmin])),
+                panHeight), 0.0);
+
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
             {
                 // Color map adjustments based on statistics. Emprically derived.
-                const double histAvg = histTotal / ((double)MAX_HISTOGRAM_SIZE * (double)npts);
+                const double histAvg = histTotal / ((double)HISTOGRAM_SIZE * (double)npts);
                 const double zoomBoostMul = histogramFastAttack ? 1.0 + 0.5 / histAvg : 1.0;
                 const double zoomBoostAdd = histogramFastAttack ? 20 / histAvg : 0.0;
 
                 const double *histData = m_histIIR[i + xmin];
-                qint32 topBin = h;
-                for (j = 0; j < MAX_HISTOGRAM_SIZE; ++j)
+                qint32 topBin = qRound(panHeight);
+                for (j = 0; j < HISTOGRAM_SIZE; ++j)
                 {
                     qint32 cidx = qRound(histData[j] * zoomBoostMul / m_histMaxIIR * 255.0 * .8);
                     if (cidx > 0) {
@@ -1297,47 +1452,41 @@ void CPlotter::draw()
                         cidx += zoomBoostAdd;
                         cidx = std::max(std::min(cidx, 255), 0);
                         QColor c = m_ColorTbl[cidx];
-                        // Don't block Y axis, tread lightly on other stuff.
-                        c.setAlpha(i + xmin > m_YAxisWidth ? 160 : 60);
+                        c.setAlpha(160);
                         // Paint rectangle
                         const qint32 binY = qRound(binSizeY * j);
                         topBin = std::min(topBin, binY);
                         const qint32 binH = qRound(binSizeY * (j + 1) - binY);
-                        painter2.fillRect(i + xmin, binY, 1, binH, c);
+                        painter2.fillRect(QRect(i + xmin, binY, 1.0, binH), c);
                     }
                 }
-                if (topBin != h)
-                    painter2.fillRect(i + xmin, topBin, 1, binSizeY, maxLineColor);
+                if (topBin != qRound(panHeight))
+                    painter2.fillRect(QRect(i + xmin, topBin, 1.0, binSizeY), maxLineColor);
             }
 
             // Max points
             if (m_PlotMode != PLOT_MODE_HISTOGRAM)
             {
-                maxLineBuf[i].setX(i + xmin + 0.5);
-                maxLineBuf[i].setY(m_fftMaxBuf[i + xmin] + 0.5);
+                maxLineBuf[i] = QPointF(i + xmin + 0.5, yMaxD + 0.5);
             }
             // Avg points
             if (m_PlotMode != PLOT_MODE_MAX)
             {
-                avgLineBuf[i].setX(i + xmin + 0.5);
-                avgLineBuf[i].setY(m_fftAvgBuf[i + xmin] + 0.5);
+                avgLineBuf[i] = QPointF(i + xmin + 0.5, yAvgD + 0.5);
             }
             // Fill area between markers, even if they are off screen
             if (fillMarkers && i > minMarker && i < maxMarker) {
-                painter2.fillRect(i + xmin, m_fftMaxBuf[i + xmin] + 1,
-                                  1, h - m_fftMaxBuf[i + xmin], abFillBrush);
+                painter2.fillRect(QRect(i + xmin, yMaxD + 1.0, 1.0, panHeight - yMaxD), abFillBrush);
             }
             if (m_FftFill)
             {
                 // Fill below max in max mode, else fill below avg
-                qint32 *dataSource = (m_PlotMode == PLOT_MODE_MAX ? m_fftMaxBuf : m_fftAvgBuf);
-                painter2.fillRect(i + xmin, dataSource[i + xmin] + 1,
-                                  1, h - dataSource[i + xmin], m_FftFillCol);
+                double yD = PLOT_MODE_MAX ? yMaxD : yAvgD;
+                painter2.fillRect(QRect(i + xmin, yD + 1.0, 1.0, panHeight - yD), m_FftFillCol);
             }
             if (m_PlotMode == PLOT_MODE_FILLED)
             {
-                painter2.fillRect(i + xmin, m_fftMaxBuf[i + xmin] + 1,
-                                  1, m_fftAvgBuf[i + xmin] - m_fftMaxBuf[i + xmin], maxFillBrush);
+                painter2.fillRect(QRect(i + xmin, yMaxD + 1.0, 1.0, yAvgD - yMaxD), maxFillBrush);
             }
         }
 
@@ -1356,14 +1505,12 @@ void CPlotter::draw()
         if (m_PeakHoldActive)
         {
             // Show max(max) except when showing only avg on screen
-            qint32 *dataSource = (m_PlotMode == PLOT_MODE_AVG ? m_fftAvgBuf : m_fftMaxBuf);
             for (i = 0; i < npts; i++)
             {
-                if(!m_PeakHoldValid || dataSource[i] < m_fftPeakHoldBuf[i])
-                    m_fftPeakHoldBuf[i] = dataSource[i];
-
-                maxLineBuf[i].setX(i + xmin);
-                maxLineBuf[i].setY(m_fftPeakHoldBuf[i + xmin]);
+                const double yPeakHoldD = std::max(std::min(
+                    panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftPeakHoldBuf[i + xmin])),
+                    panHeight), 0.0);
+                maxLineBuf[i] = QPointF(i + xmin, yPeakHoldD);
             }
             painter2.setPen(m_PeakHoldColor);
             painter2.drawPolyline(maxLineBuf, npts);
@@ -1375,14 +1522,12 @@ void CPlotter::draw()
         if (m_MinHoldActive)
         {
             // Show min(avg) except when showing only max on scree
-            qint32 *dataSource = (m_PlotMode == PLOT_MODE_MAX ? m_fftMaxBuf : m_fftAvgBuf);
             for (i = 0; i < npts; i++)
             {
-                if(!m_MinHoldValid || dataSource[i] > m_fftMinHoldBuf[i])
-                    m_fftMinHoldBuf[i] = dataSource[i];
-
-                maxLineBuf[i].setX(i + xmin);
-                maxLineBuf[i].setY(m_fftMinHoldBuf[i + xmin]);
+                const double yMinHoldD = std::max(std::min(
+                    panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMinHoldBuf[i + xmin])),
+                    panHeight), 0.0);
+                maxLineBuf[i] = QPointF(i + xmin, yMinHoldD);
             }
             painter2.setPen(m_MinHoldColor);
             painter2.drawPolyline(maxLineBuf, npts);
@@ -1394,7 +1539,7 @@ void CPlotter::draw()
         if (m_PeakDetection > 0)
         {
             // If peak hold is on, use it to detect peaks. Otherwise use current fft.
-            int *detectSource = m_PeakHoldActive ? m_fftPeakHoldBuf : m_fftMaxBuf;
+            float *detectSource = m_PeakHoldActive ? m_fftPeakHoldBuf : m_fftMaxBuf;
             m_Peaks.clear();
 
             if (m_PeakHoldActive)
@@ -1402,19 +1547,23 @@ void CPlotter::draw()
                 const int detectWindow = 20;
                 for (i = xmin + detectWindow/2; i < xmin + npts - detectWindow/2; ++i)
                 {
-                    int d = detectSource[i];
-                    int maxInWindow = h;
+                    float d = detectSource[i];
+                    float maxInWindow = std::numeric_limits<float>::lowest();
                     for (j = i - detectWindow/2; j <= i + detectWindow/2 + 1; ++j)
-                        if (j != i && detectSource[j] < maxInWindow)
+                        if (j != i && detectSource[j] > maxInWindow)
                             maxInWindow = detectSource[j];
-                    if (d < maxInWindow)
-                        m_Peaks.insert(i, d);
+                    if (d > maxInWindow) {
+                        const float yD = std::max(std::min(
+                            panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
+                            panHeight - 0.0), 0.0);
+                        m_Peaks.insert(i + xmin, yD);
+                    }
                 }
             }
             else
             {
-                float   mean = 0;
-                float   sum_of_sq = 0;
+                double   mean = 0;
+                double   sum_of_sq = 0;
                 for (i = 0; i < npts; i++)
                 {
                     mean += detectSource[i + xmin];
@@ -1429,13 +1578,16 @@ void CPlotter::draw()
                     float d = (lastPeak == -1) ? (mean - m_PeakDetection * stdev) :
                             detectSource[lastPeak + xmin];
 
-                    if (detectSource[i + xmin] < d)
+                    if (detectSource[i + xmin] > d)
                         lastPeak=i;
 
                     if (lastPeak != -1 &&
                         (i - lastPeak > PEAK_H_TOLERANCE || i == npts-1))
                     {
-                        m_Peaks.insert(lastPeak + xmin, detectSource[lastPeak + xmin]);
+                        const float yD = std::max(std::min(
+                            panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
+                            panHeight - 0.0), 0.0);
+                        m_Peaks.insert(lastPeak + xmin, yD);
                         lastPeak = -1;
                     }
                 }
@@ -1444,12 +1596,14 @@ void CPlotter::draw()
             // Paint peaks
             painter2.setPen(m_maxFftColor);
             for(auto peakx : m_Peaks.keys()) {
-                painter2.drawEllipse(peakx - 5, m_Peaks.value(peakx) - 5, 10, 10);
+                const float peakv = m_Peaks.value(peakx);
+                painter2.drawEllipse(QRect(peakx - 5.0, peakv - 5.0, 10.0, 10.0));
             }
         }
 
-        painter2.end();
-
+        // Add overlay
+        painter2.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        painter2.drawPixmap(QPointF(0.0, 0.0), m_OverlayPixmap);
     }
 
     // trigger a new paintEvent
@@ -1494,9 +1648,9 @@ void CPlotter::setNewFftData(float *fftData, int size)
     }
 
     // Update IIR, compensating for frame rate
-    const double gamma = 8.0;
-    const double a1 = pow(1.0 - m_alpha, gamma / (double)fft_rate);
-    const double a = 1.0 - a1;
+    const float gamma = 8.0;
+    const float a1 = pow(1.0 - m_alpha, gamma / (float)fft_rate);
+    const float a = 1.0 - a1;
     for (int i = 0; i < size; ++i)
     {
         m_fftIIR[i] = a * fftData[i] + a1 * m_fftIIR[i];
@@ -1506,156 +1660,6 @@ void CPlotter::setNewFftData(float *fftData, int size)
     m_fftDataSize = size;
 
     draw();
-}
-
-void CPlotter::getScreenIntegerFFTData(
-    qint32 plotHeight, qint32 plotWidth,
-    float maxdB, float mindB,
-    qint64 startFreq, qint64 endFreq,
-    const float *fftIn,
-    qint32 *maxOutBuf, qint32 *avgOutBuf,
-    qint32 *histogram, float histMaxdB, float histMindB,
-    int *xmin, int *xmax) const
-{
-    // startFreq and endfreq are offsets in hz from the center of the fft. This
-    // is the portion of the fft that will be displayed.
-
-    qint32 i, x, y;
-    const qint64 fftSize = m_fftDataSize;
-    const double dBGainFactor = ((double)plotHeight) / fabs(maxdB - mindB);
-    const double histdBGainFactor = ((double)plotHeight) / fabs(histMaxdB - histMindB);
-
-    // Scale for dBm into 50 ohms
-    double pwr_scale;
-    if (d_display_dbm)
-        pwr_scale = 1000.0 / (2.0 * (double)fftSize * m_SampleFreq * 50.0);
-    else
-        pwr_scale = 1.0 / (double)fftSize / (double)fftSize;
-
-    // Start and end bins for requested frequency offsets. These values could
-    // be outside the actual fft data range, since the display can be shifted
-    // past limits while zooming.
-    const qint64 startBin = std::min(
-        qRound64(
-            (double)startFreq * (double)fftSize / (double)m_SampleFreq + fftSize / 2
-        ),
-        fftSize - 1
-    );
-    const qint64 endBin = std::max(
-        qRound64(
-            (double)endFreq * (double)fftSize / (double)m_SampleFreq + fftSize / 2
-        ),
-        startBin
-    );
-
-    // Number of bins mapped across plot, taking zoom into account
-    const double numBins = (double)(endBin - startBin);
-
-    // Pixels per mapped bin
-    const double xScale = (double)plotWidth / numBins;
-
-    // Start and end bins to be displayed, clipped to valid fft bins
-    const qint64 minbin = std::max(startBin, (qint64)0);
-    const qint64 maxbin = std::min(endBin, (qint64)(fftSize - 1));
-
-    if (histogram)
-        memset(histogram, 0, sizeof(qint32) * MAX_SCREENSIZE * MAX_HISTOGRAM_SIZE);
-
-    // More FFT points than plot points, so decimate
-    if (numBins > plotWidth)
-    {
-        *xmin = qRound((double)(minbin - startBin) * xScale);
-        *xmax = qRound((double)(maxbin - startBin) * xScale);
-
-        qint32 x;
-        float vmax = std::numeric_limits<float>::min();
-        double binsum = fftIn[minbin];
-        qint32 bincount = 1;
-
-        qint32 xprev = qRound((double)(minbin - startBin) * xScale);
-        for(int i = minbin; i <= maxbin; i++)
-        {
-            x = qRound((double)(i - startBin) * xScale);
-            float v = fftIn[i];
-
-            if (histogram)
-            {
-                const double fy = histdBGainFactor * (histMaxdB - 10 * log10(pwr_scale * v));
-                if (fy >= 0 && fy < plotHeight)
-                {
-                    const qint32 bin = qint32(fy * (double)MAX_HISTOGRAM_SIZE / (double)plotHeight);
-                    const qint32 histV = histogram[x * MAX_HISTOGRAM_SIZE + bin];
-                    histogram[x * MAX_HISTOGRAM_SIZE + bin] = histV + 1;
-                }
-            }
-
-            // New (or last) pixel - output value
-            if (x != xprev || i == maxbin)
-            {
-                if (maxOutBuf)
-                {
-                    const float param = vmax;
-                    y = qRound(dBGainFactor * (maxdB - 10 * log10(pwr_scale * param)));
-                    y = std::max(std::min(y, plotHeight - 1), 0);
-                    maxOutBuf[xprev] = y;
-                }
-                if (avgOutBuf)
-                {
-                    const float param = binsum / (double)bincount;
-                    y = qRound(dBGainFactor * (maxdB - 10 * log10(pwr_scale * param)));
-                    y = std::max(std::min(y, plotHeight - 1), 0);
-                    avgOutBuf[xprev] = y;
-                }
-
-                vmax = v;
-                binsum = v;
-                bincount = 1;
-                xprev = x;
-            }
-            else
-            {
-                vmax = std::max(v, vmax);
-                binsum += v;
-                ++bincount;
-            }
-        }
-    }
-
-    // More plot points than FFT points, so interpolate (replicate).
-    else
-    {
-        *xmin = 0;
-        *xmax = plotWidth;
-
-        for (i = 0; i < plotWidth; ++i)
-        {
-            x = qint32((double)(startBin) + (double)i / xScale);
-
-            if(x < 0 || x > fftSize)
-                y = plotHeight;
-            else
-                y = qRound(dBGainFactor * (maxdB - 10 * log10(pwr_scale * fftIn[x])));
-
-            y = std::max(std::min(y, plotHeight - 1), 0);
-
-            // max, avg, min are all the same
-            if (maxOutBuf)
-                maxOutBuf[i] = y;
-            if (avgOutBuf)
-                avgOutBuf[i] = y;
-
-            if (histogram)
-            {
-                if(x < 0 || x > fftSize)
-                    y = plotHeight;
-                else
-                    y = qRound(histdBGainFactor * (histMaxdB - 10 * log10(pwr_scale * fftIn[x])));
-                const qint32 bin = qRound((double)y * (double)MAX_HISTOGRAM_SIZE / (double)plotHeight);
-                const qint32 histV = histogram[i * MAX_HISTOGRAM_SIZE + bin];
-                histogram[i * MAX_HISTOGRAM_SIZE + bin] = histV + 1;
-            }
-        }
-    }
 }
 
 void CPlotter::setFftAvg(float avg)
@@ -1699,8 +1703,6 @@ void CPlotter::drawOverlay()
     if (m_OverlayPixmap.isNull())
         return;
 
-    int     w = m_OverlayPixmap.width() / m_DPR;
-    int     h = m_OverlayPixmap.height() / m_DPR;
     int     x,y;
     float   pixperdiv;
     float   adjoffset;
@@ -1708,13 +1710,13 @@ void CPlotter::drawOverlay()
     float   mindbadj;
     QRect   rect;
     QFontMetrics    metrics(m_Font);
+    int     w = m_OverlayPixmap.width() / m_DPR;
+    int     h = m_OverlayPixmap.height() / m_DPR;
+
+    m_OverlayPixmap.fill(Qt::transparent);
+
     QPainter        painter(&m_OverlayPixmap);
-
     painter.setFont(m_Font);
-
-    // solid background
-    painter.setBrush(Qt::SolidPattern);
-    painter.fillRect(0, 0, w, h, QColor(PLOTTER_BGD_COLOR));
 
     QList<BookmarkInfo> tags;
 
