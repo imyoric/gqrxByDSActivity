@@ -730,7 +730,6 @@ void CPlotter::mousePressEvent(QMouseEvent * event)
                         const double panddBGainFactor = panHeight / fabs(m_PandMaxdB - m_PandMindB);
                         const double vlog = m_PandMaxdB - event->y() / panddBGainFactor;
                         const float v = powf(10.0, vlog / 10.0);
-                        printf("%lf dB\n", vlog);
 
                         // Ignore clicks exactly on the plot, below the
                         // pandapter, or when uninitialized
@@ -1073,9 +1072,9 @@ void CPlotter::paintEvent(QPaintEvent *)
 // Called to update spectrum data for displaying on the screen
 void CPlotter::draw()
 {
-    qint32  i, j, x;
-    qint32  xmin, xmax;
-    double  histMax, histTotal;
+    qint32 i, j, x;
+    qint32 xmin, xmax;
+    double histMax, histTotal;
 
     // TODO: make into a setting?
     const bool histogramFastAttack = false;
@@ -1152,18 +1151,19 @@ void CPlotter::draw()
     // Min mean "min of peak" in PEAK mode, else "min of average"
     const bool minIsAverage = m_PlotMode != PLOT_MODE_MAX;
 
-    xmin = qRound((double)(minbin - startBin) * xScale);
-    xmax = qRound((double)(maxbin - startBin) * xScale);
-    qint32 xprev = xmin;
     float vmax;
     float vmaxIIR;
     double vsum;
     double vsumIIR;
-    qint32 count;
-    bool first = true;
 
     if (numBins >= panWidth)
     {
+        qint32 count;
+        xmin = qRound((double)(minbin - startBin) * xScale);
+        xmax = qRound((double)(maxbin - startBin) * xScale);
+        qint32 xprev = xmin;
+        bool first = true;
+
         for(qint32 i = minbin; i <= maxbin; i++)
         {
             x = qRound((double)(i - startBin) * xScale);
@@ -1242,9 +1242,12 @@ void CPlotter::draw()
     // panWidth > m_fftDataSize uses no averaging
     else
     {
-        for (i = 0; i < panWidth; i++)
+        xmin = qRound((double)(minbin - startBin) * xScale);
+        xmax = qRound((double)(maxbin - startBin) * xScale);
+
+        for (i = xmin; i < xmax; i++)
         {
-            j = qRound((double)(startBin + i) / xScale);
+            j = qRound((double)i / xScale + startBin);
             const float v = m_fftData[j] * pwr_scale;
             const float viir = m_fftIIR[j] * pwr_scale;
 
@@ -1385,7 +1388,7 @@ void CPlotter::draw()
 
         // Fill between max and avg
         QColor maxFillCol = m_FftFillCol;
-        maxFillCol.setAlpha(60);
+        maxFillCol.setAlpha(80);
         QBrush maxFillBrush = QBrush(maxFillCol);
 
         QColor abFillColor = QColor(PLOTTER_MARKER_COLOR);
@@ -1452,7 +1455,6 @@ void CPlotter::draw()
                         cidx += zoomBoostAdd;
                         cidx = std::max(std::min(cidx, 255), 0);
                         QColor c = m_ColorTbl[cidx];
-                        c.setAlpha(160);
                         // Paint rectangle
                         const qint32 binY = qRound(binSizeY * j);
                         topBin = std::min(topBin, binY);
@@ -1538,21 +1540,33 @@ void CPlotter::draw()
         // Peak detection
         if (m_PeakDetection > 0)
         {
-            // If peak hold is on, use it to detect peaks. Otherwise use current fft.
-            float *detectSource = m_PeakHoldActive ? m_fftPeakHoldBuf : m_fftMaxBuf;
+            // Use data source appropriate for current display mode
+            float *_detectSource;
+            if (m_PeakHoldActive)
+                _detectSource = m_fftPeakHoldBuf;
+            else if (m_PlotMode == PLOT_MODE_AVG || m_PlotMode == PLOT_MODE_HISTOGRAM)
+                _detectSource = m_fftAvgBuf;
+            else
+                _detectSource = m_fftMaxBuf;
+            const float *detectSource = _detectSource;
             m_Peaks.clear();
 
-            if (m_PeakHoldActive)
+            // if (m_PeakHoldActive)
+            if (true)
             {
-                const int detectWindow = 20;
-                for (i = xmin + detectWindow/2; i < xmin + npts - detectWindow/2; ++i)
+                for (i = xmin + PEAK_H_TOLERANCE; i < xmin + npts - PEAK_H_TOLERANCE; ++i)
                 {
                     float d = detectSource[i];
                     float maxInWindow = std::numeric_limits<float>::lowest();
-                    for (j = i - detectWindow/2; j <= i + detectWindow/2 + 1; ++j)
+                    float minInWindow = std::numeric_limits<float>::infinity();
+                    for (j = i - PEAK_H_TOLERANCE; j <= i + PEAK_H_TOLERANCE + 1; ++j)
+                    {
                         if (j != i && detectSource[j] > maxInWindow)
                             maxInWindow = detectSource[j];
-                    if (d > maxInWindow) {
+                        if (j != i && detectSource[j] < minInWindow)
+                            minInWindow = detectSource[j];
+                    }
+                    if (d > maxInWindow && d > PEAK_H_TOLERANCE * minInWindow) {
                         const float yD = std::max(std::min(
                             panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
                             panHeight - 0.0), 0.0);
@@ -1562,23 +1576,28 @@ void CPlotter::draw()
             }
             else
             {
-                double   mean = 0;
-                double   sum_of_sq = 0;
+                // Note: this algorithm originally worked on log10 data and has
+                // been adjusted to work on linear data with the min displayed
+                // dB as a reference. Further work may be required.
+                double vMin = pow(10.0, m_PandMindB / 10.0);
+                double mean = 0;
+                double sum_of_sq = 0;
                 for (i = 0; i < npts; i++)
                 {
-                    mean += detectSource[i + xmin];
-                    sum_of_sq += detectSource[i + xmin] * detectSource[i + xmin];
+                    mean += detectSource[i + xmin] - vMin;
+                    sum_of_sq += (detectSource[i + xmin] - vMin) * (detectSource[i + xmin] - vMin);
                 }
                 mean /= npts;
-                float stdev= sqrt(sum_of_sq / npts - mean * mean );
+                double stdev= sqrt(sum_of_sq / npts - mean * mean );
                 int lastPeak = -1;
                 for (i = 0; i < npts; i++)
                 {
                     //m_PeakDetection times the std over the mean or better than current peak
-                    float d = (lastPeak == -1) ? (mean - m_PeakDetection * stdev) :
+                    // Note: factor now ignored (it was always 2 anyway)
+                    float d = (lastPeak == -1) ? (0.5 * mean + /*m_PeakDetection * */ 0.5 * stdev) :
                             detectSource[lastPeak + xmin];
 
-                    if (detectSource[i + xmin] > d)
+                    if (detectSource[i + xmin] - vMin > d)
                         lastPeak=i;
 
                     if (lastPeak != -1 &&
@@ -1785,7 +1804,7 @@ void CPlotter::drawOverlay()
             m_Taglist.append(qMakePair(QRect(x, levelNHeight, nameWidth + slant, fontHeight), tag.frequency));
 
             QColor color = QColor(tag.GetColor());
-            color.setAlpha(0x60);
+            color.setAlpha(100);
             // Vertical line
             painter.setPen(QPen(color, 1, Qt::DashLine));
             painter.drawLine(x, levelNHeightBottomSlant, x, xAxisTop);
@@ -1799,7 +1818,7 @@ void CPlotter::drawOverlay()
             painter.drawLine(x + 1, levelNHeightBottomSlant - 1,
                              x + slant - 1, levelNHeightBottom + 1);
 
-            color.setAlpha(0xFF);
+            color.setAlpha(255);
             painter.setPen(QPen(color, 2, Qt::SolidLine));
             painter.drawText(x + slant, levelNHeight, nameWidth,
                              fontHeight, Qt::AlignVCenter | Qt::AlignHCenter,
@@ -1902,14 +1921,19 @@ void CPlotter::drawOverlay()
 
     // draw frequency values (x axis)
     makeFrequencyStrs();
-    painter.setPen(QColor(PLOTTER_TEXT_COLOR));
     for (int i = 0; i <= m_HorDivs; i++)
     {
         int tw = w;
         x = (int)((float)i*pixperdiv + adjoffset);
         if (x > m_YAxisWidth)
         {
+            // Shadow
+            rect.setRect(x + 1.0 - tw/2, fLabelTop + 1.0, tw, metrics.height());
+            painter.setPen(QColor(Qt::black));
+            painter.drawText(rect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
+            // Foreground
             rect.setRect(x - tw/2, fLabelTop, tw, metrics.height());
+            painter.setPen(QColor(PLOTTER_TEXT_COLOR));
             painter.drawText(rect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
         }
     }
@@ -1942,7 +1966,6 @@ void CPlotter::drawOverlay()
     }
 
     // draw amplitude values (y axis)
-    painter.setPen(QColor(PLOTTER_TEXT_COLOR));
     for (int i = 0; i < m_VerDivs; i++)
     {
         y = h - (int)((float) i * pixperdiv + adjoffset);
@@ -1950,6 +1973,12 @@ void CPlotter::drawOverlay()
         if (y < h -xAxisHeight)
         {
             int dB = mindbadj + dbstepsize * i;
+            // Shadow
+            painter.setPen(QColor(Qt::black));
+            rect.setRect(HOR_MARGIN + 1.0, y - th / 2 + 1.0, m_YAxisWidth - 2 * HOR_MARGIN, th);
+            painter.drawText(rect, Qt::AlignRight|Qt::AlignVCenter, QString::number(dB));
+            // Foreground
+            painter.setPen(QColor(PLOTTER_TEXT_COLOR));
             rect.setRect(HOR_MARGIN, y - th / 2, m_YAxisWidth - 2 * HOR_MARGIN, th);
             painter.drawText(rect, Qt::AlignRight|Qt::AlignVCenter, QString::number(dB));
         }
@@ -2181,13 +2210,13 @@ void CPlotter::setFftPlotColor(const QColor& color)
 {
     m_avgFftColor = color;
     m_maxFftColor = color;
-    m_maxFftColor.setAlpha(128);
+    // m_maxFftColor.setAlpha(192);
     m_FftFillCol = color;
-    m_FftFillCol.setAlpha(0x1A);
+    m_FftFillCol.setAlpha(26);
     m_PeakHoldColor = color;
-    m_PeakHoldColor.setAlpha(60);
+    m_PeakHoldColor.setAlpha(80);
     m_MinHoldColor = color;
-    m_MinHoldColor.setAlpha(60);
+    m_MinHoldColor.setAlpha(80);
 }
 
 /** Enable/disable filling the area below the FFT plot. */
