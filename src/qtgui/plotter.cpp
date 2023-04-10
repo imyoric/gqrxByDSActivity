@@ -1046,7 +1046,7 @@ void CPlotter::resizeEvent(QResizeEvent* )
         m_histIIRValid = false;
 
         if (wf_span > 0 && height > 0)
-            msec_per_wfline = qRound64((double)wf_span / (double)height);
+            msec_per_wfline = (double)wf_span / (double)height;
         memset(m_wfbuf, 255, MAX_SCREENSIZE);
     }
 
@@ -1446,7 +1446,7 @@ void CPlotter::draw()
                 const double zoomBoostAdd = histogramFastAttack ? 20 / histAvg : 0.0;
 
                 const double *histData = m_histIIR[i + xmin];
-                qint32 topBin = qRound(panHeight);
+                double topBin = panHeight;
                 for (j = 0; j < HISTOGRAM_SIZE; ++j)
                 {
                     qint32 cidx = qRound(histData[j] * zoomBoostMul / m_histMaxIIR * 255.0 * .8);
@@ -1456,14 +1456,14 @@ void CPlotter::draw()
                         cidx = std::max(std::min(cidx, 255), 0);
                         QColor c = m_ColorTbl[cidx];
                         // Paint rectangle
-                        const qint32 binY = qRound(binSizeY * j);
+                        const double binY = binSizeY * j;
                         topBin = std::min(topBin, binY);
-                        const qint32 binH = qRound(binSizeY * (j + 1) - binY);
-                        painter2.fillRect(QRect(i + xmin, binY, 1.0, binH), c);
+                        const double binH = binSizeY * (j + 1) - binY;
+                        painter2.fillRect(QRectF(i + xmin, binY, 1.0, binH), c);
                     }
                 }
-                if (topBin != qRound(panHeight))
-                    painter2.fillRect(QRect(i + xmin, topBin, 1.0, binSizeY), maxLineColor);
+                if (topBin != panHeight)
+                    painter2.fillRect(QRectF(i + xmin, topBin, 1.0, binSizeY), maxLineColor);
             }
 
             // Max points
@@ -1478,17 +1478,17 @@ void CPlotter::draw()
             }
             // Fill area between markers, even if they are off screen
             if (fillMarkers && i > minMarker && i < maxMarker) {
-                painter2.fillRect(QRect(i + xmin, yMaxD + 1.0, 1.0, panHeight - yMaxD), abFillBrush);
+                painter2.fillRect(QRectF(i + xmin, yMaxD + 1.0, 1.0, panHeight - yMaxD), abFillBrush);
             }
             if (m_FftFill)
             {
                 // Fill below max in max mode, else fill below avg
-                double yD = PLOT_MODE_MAX ? yMaxD : yAvgD;
-                painter2.fillRect(QRect(i + xmin, yD + 1.0, 1.0, panHeight - yD), m_FftFillCol);
+                double y = PLOT_MODE_MAX ? yMaxD : yAvgD;
+                painter2.fillRect(QRectF(i + xmin, y + 1.0, 1.0, panHeight - y), m_FftFillCol);
             }
             if (m_PlotMode == PLOT_MODE_FILLED)
             {
-                painter2.fillRect(QRect(i + xmin, yMaxD + 1.0, 1.0, yAvgD - yMaxD), maxFillBrush);
+                painter2.fillRect(QRectF(i + xmin, yMaxD + 1.0, 1.0, yAvgD - yMaxD), maxFillBrush);
             }
         }
 
@@ -1567,10 +1567,10 @@ void CPlotter::draw()
                             minInWindow = detectSource[j];
                     }
                     if (d > maxInWindow && d > PEAK_H_TOLERANCE * minInWindow) {
-                        const float yD = std::max(std::min(
+                        const double y = std::max(std::min(
                             panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
                             panHeight - 0.0), 0.0);
-                        m_Peaks.insert(i + xmin, yD);
+                        m_Peaks.insert(i + xmin, y);
                     }
                 }
             }
@@ -1603,10 +1603,10 @@ void CPlotter::draw()
                     if (lastPeak != -1 &&
                         (i - lastPeak > PEAK_H_TOLERANCE || i == npts-1))
                     {
-                        const float yD = std::max(std::min(
+                        const double y = std::max(std::min(
                             panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
                             panHeight - 0.0), 0.0);
-                        m_Peaks.insert(lastPeak + xmin, yD);
+                        m_Peaks.insert(lastPeak + xmin, y);
                         lastPeak = -1;
                     }
                 }
@@ -1722,7 +1722,7 @@ void CPlotter::drawOverlay()
     if (m_OverlayPixmap.isNull())
         return;
 
-    int     x,y;
+    int     x;
     float   pixperdiv;
     float   adjoffset;
     float   dbstepsize;
@@ -1914,25 +1914,25 @@ void CPlotter::drawOverlay()
     painter.setPen(QPen(QColor(PLOTTER_GRID_COLOR), 1, Qt::DotLine));
     for (int i = 0; i <= m_HorDivs; i++)
     {
-        x = (int)((float)i * pixperdiv + adjoffset);
-        if (x > m_YAxisWidth)
-            painter.drawLine(x, 0, x, xAxisTop);
+        double xD = (double)i * pixperdiv + adjoffset;
+        if (xD > m_YAxisWidth)
+            painter.drawLine(xD, 0, xD, xAxisTop);
     }
 
     // draw frequency values (x axis)
     makeFrequencyStrs();
     for (int i = 0; i <= m_HorDivs; i++)
     {
-        int tw = w;
-        x = (int)((float)i*pixperdiv + adjoffset);
-        if (x > m_YAxisWidth)
+        double tw = w;
+        double xD = (double)i * pixperdiv + adjoffset;
+        if (xD > m_YAxisWidth)
         {
             // Shadow
-            rect.setRect(x + 1.0 - tw/2, fLabelTop + 1.0, tw, metrics.height());
+            rect.setRect(xD + 1.0 - tw/2, fLabelTop + 1.0, tw, metrics.height());
             painter.setPen(QColor(Qt::black));
             painter.drawText(rect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
             // Foreground
-            rect.setRect(x - tw/2, fLabelTop, tw, metrics.height());
+            rect.setRect(xD - tw/2, fLabelTop, tw, metrics.height());
             painter.setPen(QColor(PLOTTER_TEXT_COLOR));
             painter.drawText(rect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
         }
@@ -1942,16 +1942,15 @@ void CPlotter::drawOverlay()
     qint64 mindBAdj64 = 0;
     qint64 dbDivSize = 0;
 
-    // Subtract font height from available area to protect freq labels
     calcDivSize((qint64) m_PandMindB, (qint64) m_PandMaxdB,
-                qMax((h - metrics.height())/m_VdivDelta, VERT_DIVS_MIN),
+                qMax(h / m_VdivDelta, VERT_DIVS_MIN),
                 mindBAdj64, dbDivSize, m_VerDivs);
 
     dbstepsize = (float) dbDivSize;
     mindbadj = mindBAdj64;
 
-    pixperdiv = (float) h * (float) dbstepsize / (m_PandMaxdB - m_PandMindB);
-    adjoffset = (float) h * (mindbadj - m_PandMindB) / (m_PandMaxdB - m_PandMindB);
+    pixperdiv = (float)h * (float)dbstepsize / (m_PandMaxdB - m_PandMindB);
+    adjoffset = (float)h * (mindbadj - m_PandMindB) / (m_PandMaxdB - m_PandMindB);
 
     qCDebug(plotter) << "minDb =" << m_PandMindB << "maxDb =" << m_PandMaxdB
                      << "mindbadj =" << mindbadj << "dbstepsize =" << dbstepsize
@@ -1960,7 +1959,7 @@ void CPlotter::drawOverlay()
     painter.setPen(QPen(QColor(PLOTTER_GRID_COLOR), 1, Qt::DotLine));
     for (int i = 0; i <= m_VerDivs; i++)
     {
-        y = h - (int)((float) i * pixperdiv + adjoffset);
+        double y = h - ((double)i * pixperdiv + adjoffset);
         if (y < h - xAxisHeight)
             painter.drawLine(m_YAxisWidth, y, w, y);
     }
@@ -1968,7 +1967,7 @@ void CPlotter::drawOverlay()
     // draw amplitude values (y axis)
     for (int i = 0; i < m_VerDivs; i++)
     {
-        y = h - (int)((float) i * pixperdiv + adjoffset);
+        double y = h - ((double)i * pixperdiv + adjoffset);
         int th = metrics.height();
         if (y < h -xAxisHeight)
         {
