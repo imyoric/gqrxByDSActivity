@@ -1336,6 +1336,7 @@ void CPlotter::draw()
                 for (i = xmin; i < xmax; i++)
                 {
                     qint32 cidx = qRound((m_WfMaxdB - 10.0 * log10(dataSource[i])) * wfdBGainFactor);
+                    cidx = std::max(std::min(cidx, 255), 0);
                     painter1.setPen(m_ColorTbl[255 - cidx]);
                     painter1.drawRect(QRect(i, 0.0, 1.0, 1.0));
                 }
