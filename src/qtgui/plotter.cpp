@@ -171,7 +171,6 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     msec_per_wfline = 0;
     wf_span = 0;
     fft_rate = 15;
-    memset(m_wfbuf, 255, MAX_SCREENSIZE);
 }
 
 CPlotter::~CPlotter()
@@ -582,7 +581,13 @@ void CPlotter::setWaterfallSpan(quint64 span_ms)
 void CPlotter::clearWaterfall()
 {
     m_WaterfallPixmap.fill(Qt::black);
-    memset(m_wfbuf, 255, MAX_SCREENSIZE);
+    clearWaterfallBuf();
+}
+
+void CPlotter::clearWaterfallBuf()
+{
+    for (int i = 0; i < MAX_SCREENSIZE; i++)
+        m_wfbuf[i] = std::numeric_limits<float>::lowest();
 }
 
 /**
@@ -642,9 +647,9 @@ bool CPlotter::saveWaterfall(const QString & filename) const
     {
         y = (int)((float)i * pixperdiv);
         if (msec_per_wfline > 0)
-            msec =  tlast_wf_ms - y * msec_per_wfline;
+            msec =  tlast_wf_ms - qRound(y * msec_per_wfline);
         else
-            msec =  tlast_wf_ms - y * 1000 / fft_rate;
+            msec =  tlast_wf_ms - qRound(y * 1000.0 / fft_rate);
 
         tt.setMSecsSinceEpoch(msec);
         rect.setRect(0, y - font_metrics.height(), wya - 5, font_metrics.height());
@@ -668,7 +673,7 @@ quint64 CPlotter::getWfTimeRes() const
     if (msec_per_wfline)
         return msec_per_wfline;
     else
-        return 1000 / fft_rate; // Auto mode
+        return qRound64(1000.0 / (double)fft_rate); // Auto mode
 }
 
 void CPlotter::setFftRate(int rate_hz)
@@ -1046,7 +1051,9 @@ void CPlotter::resizeEvent(QResizeEvent* )
 
         if (wf_span > 0 && height > 0)
             msec_per_wfline = (double)wf_span / (double)height;
-        memset(m_wfbuf, 255, MAX_SCREENSIZE);
+
+        if (msec_per_wfline > 0)
+            clearWaterfallBuf();
     }
 
     drawOverlay();
@@ -1291,18 +1298,11 @@ void CPlotter::draw()
         else
             dataSource = m_wfMaxBuf;
 
+        // if not in "auto" mode, store max waterfall data
         if (msec_per_wfline > 0)
         {
-            // not in "auto" mode, so accumulate waterfall data
             for (i = 0; i < qMin(w, MAX_SCREENSIZE); i++)
-            {
-                // average
-                //m_wfbuf[i] = (m_wfbuf[i] + m_fftbuf[i]) / 2;
-
-                // peak (0..255 where 255 is min)
-                if (dataSource[i] > m_wfbuf[i])
-                    m_wfbuf[i] = dataSource[i];
-            }
+                m_wfbuf[i] = std::max(m_wfbuf[i], dataSource[i]);
         }
 
         // is it time to update waterfall?
@@ -1320,26 +1320,18 @@ void CPlotter::draw()
             painter1.drawRect(QRect(0.0, 0.0, xmin, 1.0));
             painter1.drawRect(QRect(xmax, 0.0, w, 1.0));
 
+            // Use stored max if in manual mode, else current data
+            const float *wfSource = msec_per_wfline > 0 ? m_wfbuf : dataSource;
+            for (i = xmin; i < xmax; i++)
+            {
+                qint32 cidx = qRound((m_WfMaxdB - 10.0 * log10(wfSource[i])) * wfdBGainFactor);
+                cidx = std::max(std::min(cidx, 255), 0);
+                painter1.setPen(m_ColorTbl[255 - cidx]);
+                painter1.drawRect(QRect(i, 0.0, 1.0, 1.0));
+            }
+
             if (msec_per_wfline > 0)
-            {
-                // user set time span
-                for (i = xmin; i < xmax; i++)
-                {
-                    painter1.setPen(m_ColorTbl[255 - m_wfbuf[i]]);
-                    painter1.drawRect(QRect(i, 0.0, 1.0, 1.0));
-                    m_wfbuf[i] = 255;
-                }
-            }
-            else
-            {
-                for (i = xmin; i < xmax; i++)
-                {
-                    qint32 cidx = qRound((m_WfMaxdB - 10.0 * log10(dataSource[i])) * wfdBGainFactor);
-                    cidx = std::max(std::min(cidx, 255), 0);
-                    painter1.setPen(m_ColorTbl[255 - cidx]);
-                    painter1.drawRect(QRect(i, 0.0, 1.0, 1.0));
-                }
-            }
+                clearWaterfallBuf();
         }
     }
 
@@ -1728,8 +1720,8 @@ void CPlotter::drawOverlay()
     float   dbstepsize;
     float   mindbadj;
     QFontMetrics    metrics(m_Font);
-    int     w = m_OverlayPixmap.width() / m_DPR;
-    int     h = m_OverlayPixmap.height() / m_DPR;
+    int     w = qRound(m_OverlayPixmap.width() / m_DPR);
+    int     h = qRound(m_OverlayPixmap.height() / m_DPR);
 
     m_OverlayPixmap.fill(Qt::transparent);
 
@@ -2007,6 +1999,11 @@ void CPlotter::drawOverlay()
         painter.drawLine(m_DemodFreqX, 0, m_DemodFreqX, h);
     }
 
+    // Draw a black line at the bottom of the plotter to separate it from the
+    // waterfall
+    painter.setPen(Qt::black);
+    painter.drawRect(QRectF(0.0, h - 1.0, w, 1.0));
+
     if (!m_Running)
     {
         // if not running so is no data updates to draw to screen
@@ -2105,12 +2102,12 @@ quint64 CPlotter::msecFromY(int y)
     if (y < m_OverlayPixmap.height() / m_DPR)
         return 0;
 
-    int dy = y - m_OverlayPixmap.height() / m_DPR;
+    double dy = (double)y - m_OverlayPixmap.height() / m_DPR;
 
     if (msec_per_wfline > 0)
         return tlast_wf_ms - dy * msec_per_wfline;
     else
-        return tlast_wf_ms - dy * 1000 / fft_rate;
+        return tlast_wf_ms - dy * 1000.0 / (double)fft_rate;
 }
 
 // Round frequency to click resolution value

@@ -121,6 +121,7 @@ public:
     quint64 getWfTimeRes() const;
     void    setFftRate(int rate_hz);
     void    clearWaterfall();
+    void    clearWaterfallBuf();
     bool    saveWaterfall(const QString & filename) const;
     void    toggleFreeze();
 
@@ -231,7 +232,7 @@ private:
     double      m_histIIR[MAX_SCREENSIZE][HISTOGRAM_SIZE]{};
     double      m_histMaxIIR;
     float      *m_fftIIR;
-    quint8      m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
+    float       m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
     float       m_fftPeakHoldBuf[MAX_SCREENSIZE]{};
     float       m_fftMinHoldBuf[MAX_SCREENSIZE]{};
     float      *m_fftData{};     /*! pointer to incoming FFT data */
