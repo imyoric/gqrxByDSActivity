@@ -308,7 +308,7 @@ private:
     QFont       m_Font;      /*!< Font used for plotter (system font) */
     int         m_HdivDelta; /*!< Minimum distance in pixels between two horizontal grid lines (vertical division). */
     int         m_VdivDelta; /*!< Minimum distance in pixels between two vertical grid lines (horizontal division). */
-    int         m_BandPlanHeight; /*!< Height in pixels of band plan (if enabled) */
+    double      m_BandPlanHeight; /*!< Height in pixels of band plan (if enabled) */
 
     quint32     m_LastSampleRate{};
 

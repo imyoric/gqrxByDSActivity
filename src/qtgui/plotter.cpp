@@ -156,7 +156,7 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     m_Percent2DScreen = 35;	//percent of screen used for 2D display
     m_VdivDelta = 30;
     m_HdivDelta = 70;
-    m_BandPlanHeight = 22;
+    m_BandPlanHeight = 0.0;
 
     m_FreqDigits = 6;
 
@@ -294,7 +294,6 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
                     QList<BandInfo> hoverBands = BandPlan::Get().getBandsEncompassing(hoverFrequency);
                     if(m_BandPlanEnabled && pt.y() > bandTopY && !hoverBands.empty())
                     {
-                        toolTipText.append("\n");
                         for (auto & hoverBand : hoverBands)
                             toolTipText.append("\n" + hoverBand.name);
                     }
@@ -1728,7 +1727,6 @@ void CPlotter::drawOverlay()
     float   adjoffset;
     float   dbstepsize;
     float   mindbadj;
-    QRect   rect;
     QFontMetrics    metrics(m_Font);
     int     w = m_OverlayPixmap.width() / m_DPR;
     int     h = m_OverlayPixmap.height() / m_DPR;
@@ -1832,21 +1830,22 @@ void CPlotter::drawOverlay()
         QList<BandInfo> bands = BandPlan::Get().getBandsInRange(m_CenterFreq + m_FftCenter - m_Span / 2,
                                                                 m_CenterFreq + m_FftCenter + m_Span / 2);
 
+        m_BandPlanHeight = metrics.height() + VER_MARGIN;
         for (auto & band : bands)
         {
             int band_left = xFromFreq(band.minFrequency);
             int band_right = xFromFreq(band.maxFrequency);
             int band_width = band_right - band_left;
-            rect.setRect(band_left, xAxisTop - m_BandPlanHeight, band_width, m_BandPlanHeight);
+            QRectF rect(band_left, xAxisTop - m_BandPlanHeight, band_width, m_BandPlanHeight);
             painter.fillRect(rect, band.color);
             QString band_label = band.name + " (" + band.modulation + ")";
             int textWidth = metrics.boundingRect(band_label).width();
             if (band_left < w && band_width > textWidth + 20)
             {
                 painter.setOpacity(1.0);
-                rect.setRect(band_left, xAxisTop - m_BandPlanHeight, band_width, metrics.height());
+                QRectF textRect(band_left, xAxisTop - m_BandPlanHeight, band_width, metrics.height());
                 painter.setPen(QColor(PLOTTER_TEXT_COLOR));
-                painter.drawText(rect, Qt::AlignCenter, band_label);
+                painter.drawText(textRect, Qt::AlignCenter, band_label);
             }
         }
     }
@@ -1926,16 +1925,19 @@ void CPlotter::drawOverlay()
     {
         double tw = w;
         double xD = (double)i * pixperdiv + adjoffset;
+        double shadowOffset = metrics.height() / 20.0;
         if (xD > m_YAxisWidth)
         {
             // Shadow
-            rect.setRect(xD + 1.0 - tw/2, fLabelTop + 1.0, tw, metrics.height());
+            QRectF shadowRect(xD + shadowOffset - tw/2, fLabelTop + shadowOffset,
+                              tw, metrics.height());
             painter.setPen(QColor(Qt::black));
-            painter.drawText(rect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
+            painter.drawText(shadowRect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
             // Foreground
-            rect.setRect(xD - tw/2, fLabelTop, tw, metrics.height());
+            QRectF textRect(xD - tw/2, fLabelTop,
+                            tw, metrics.height());
             painter.setPen(QColor(PLOTTER_TEXT_COLOR));
-            painter.drawText(rect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
+            painter.drawText(textRect, Qt::AlignHCenter|Qt::AlignBottom, m_HDivText[i]);
         }
     }
 
@@ -1969,18 +1971,21 @@ void CPlotter::drawOverlay()
     for (int i = 0; i < m_VerDivs; i++)
     {
         double y = h - ((double)i * pixperdiv + adjoffset);
-        int th = metrics.height();
+        double th = metrics.height();
+        double shadowOffset = th / 20.0;
         if (y < h -xAxisHeight)
         {
             int dB = mindbadj + dbstepsize * i;
             // Shadow
             painter.setPen(QColor(Qt::black));
-            rect.setRect(HOR_MARGIN + 1.0, y - th / 2 + 1.0, m_YAxisWidth - 2 * HOR_MARGIN, th);
-            painter.drawText(rect, Qt::AlignRight|Qt::AlignVCenter, QString::number(dB));
+            QRectF shadowRect(HOR_MARGIN + shadowOffset, y - th / 2 + shadowOffset,
+                              m_YAxisWidth - 2 * HOR_MARGIN, th);
+            painter.drawText(shadowRect, Qt::AlignRight|Qt::AlignVCenter, QString::number(dB));
             // Foreground
             painter.setPen(QColor(PLOTTER_TEXT_COLOR));
-            rect.setRect(HOR_MARGIN, y - th / 2, m_YAxisWidth - 2 * HOR_MARGIN, th);
-            painter.drawText(rect, Qt::AlignRight|Qt::AlignVCenter, QString::number(dB));
+            QRectF textRect(HOR_MARGIN, y - th / 2,
+                            m_YAxisWidth - 2 * HOR_MARGIN, th);
+            painter.drawText(textRect, Qt::AlignRight|Qt::AlignVCenter, QString::number(dB));
         }
     }
 
