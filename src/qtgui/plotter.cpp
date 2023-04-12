@@ -1310,6 +1310,10 @@ void CPlotter::draw()
         {
             tlast_wf_ms = tnow_ms;
 
+            // cursor times are relative to last time drawn
+            if (!m_Frozen)
+                tlast_wf_drawn_ms = tnow_ms;
+
             // move current data down one line(must do before attaching a QPainter object)
             m_WaterfallPixmap.scroll(0, 1, 0, 0, w, h);
 
@@ -2105,9 +2109,9 @@ quint64 CPlotter::msecFromY(int y)
     double dy = (double)y - m_OverlayPixmap.height() / m_DPR;
 
     if (msec_per_wfline > 0)
-        return tlast_wf_ms - dy * msec_per_wfline;
+        return tlast_wf_drawn_ms - dy * msec_per_wfline;
     else
-        return tlast_wf_ms - dy * 1000.0 / (double)fft_rate;
+        return tlast_wf_drawn_ms - dy * 1000.0 / (double)fft_rate;
 }
 
 // Round frequency to click resolution value
