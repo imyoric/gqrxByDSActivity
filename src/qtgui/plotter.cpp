@@ -1078,9 +1078,10 @@ void CPlotter::paintEvent(QPaintEvent *)
 // Called to update spectrum data for displaying on the screen
 void CPlotter::draw()
 {
-    qint32 i, j, x;
-    qint32 xmin, xmax;
-    double histMax, histTotal;
+    qint32       i, j, x;
+    qint32       xmin, xmax;
+    double       histMax, histTotal;
+    QFontMetrics metrics(m_Font);
 
     // TODO: make into a setting?
     const bool histogramFastAttack = false;
@@ -1101,6 +1102,7 @@ void CPlotter::draw()
     const double wfHeight = m_WaterfallPixmap.height() / m_DPR;
     const double panWidth = m_2DPixmap.width() / m_DPR;
     const double panHeight = m_2DPixmap.height() / m_DPR;
+    const double shadowOffset = metrics.height() / 20.0;
 
     bool doPlotter = panWidth > 0 && panHeight > 0;
     bool doWaterfall = wfWidth > 0 && wfHeight > 0;
@@ -1536,6 +1538,8 @@ void CPlotter::draw()
         // Peak detection
         if (m_PeakDetection > 0)
         {
+            const int pw = PEAK_WINDOW_HALF_WIDTH;
+
             // Use data source appropriate for current display mode
             float *_detectSource;
             if (m_PeakHoldActive)
@@ -1547,72 +1551,46 @@ void CPlotter::draw()
             const float *detectSource = _detectSource;
             m_Peaks.clear();
 
-            // if (m_PeakHoldActive)
-            if (true)
+            for (i = xmin + pw; i < xmin + npts - pw; ++i)
             {
-                for (i = xmin + PEAK_H_TOLERANCE; i < xmin + npts - PEAK_H_TOLERANCE; ++i)
+                const float d = detectSource[i];
+                float maxInWindow = std::numeric_limits<float>::lowest();
+                float minInWindow = std::numeric_limits<float>::infinity();
+                // Collect stats for a window of 2 * pw + 1
+                for (j = i - pw; j < i; ++j)
                 {
-                    float d = detectSource[i];
-                    float maxInWindow = std::numeric_limits<float>::lowest();
-                    float minInWindow = std::numeric_limits<float>::infinity();
-                    for (j = i - PEAK_H_TOLERANCE; j <= i + PEAK_H_TOLERANCE + 1; ++j)
-                    {
-                        if (j != i && detectSource[j] > maxInWindow)
-                            maxInWindow = detectSource[j];
-                        if (j != i && detectSource[j] < minInWindow)
-                            minInWindow = detectSource[j];
-                    }
-                    if (d > maxInWindow && d > PEAK_H_TOLERANCE * minInWindow) {
-                        const double y = std::max(std::min(
-                            panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
-                            panHeight - 0.0), 0.0);
-                        m_Peaks.insert(i + xmin, y);
-                    }
+                    const float v = detectSource[j];
+                    maxInWindow = std::max(maxInWindow, v);
+                    minInWindow = std::min(minInWindow, v);
                 }
-            }
-            else
-            {
-                // Note: this algorithm originally worked on log10 data and has
-                // been adjusted to work on linear data with the min displayed
-                // dB as a reference. Further work may be required.
-                double vMin = pow(10.0, m_PandMindB / 10.0);
-                double mean = 0;
-                double sum_of_sq = 0;
-                for (i = 0; i < npts; i++)
+                for (j = i + 1; j < i + pw; ++j)
                 {
-                    mean += detectSource[i + xmin] - vMin;
-                    sum_of_sq += (detectSource[i + xmin] - vMin) * (detectSource[i + xmin] - vMin);
+                    const float v = detectSource[j];
+                    maxInWindow = std::max(maxInWindow, v);
+                    minInWindow = std::min(minInWindow, v);
                 }
-                mean /= npts;
-                double stdev= sqrt(sum_of_sq / npts - mean * mean );
-                int lastPeak = -1;
-                for (i = 0; i < npts; i++)
+
+                // Pick sharper local peaks
+                if (d > maxInWindow && d > 2.0 * minInWindow)
                 {
-                    //m_PeakDetection times the std over the mean or better than current peak
-                    // Note: factor now ignored (it was always 2 anyway)
-                    float d = (lastPeak == -1) ? (0.5 * mean + /*m_PeakDetection * */ 0.5 * stdev) :
-                            detectSource[lastPeak + xmin];
-
-                    if (detectSource[i + xmin] - vMin > d)
-                        lastPeak=i;
-
-                    if (lastPeak != -1 &&
-                        (i - lastPeak > PEAK_H_TOLERANCE || i == npts-1))
-                    {
-                        const double y = std::max(std::min(
-                            panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
-                            panHeight - 0.0), 0.0);
-                        m_Peaks.insert(lastPeak + xmin, y);
-                        lastPeak = -1;
-                    }
+                    const double y = std::max(std::min(
+                        panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
+                        panHeight - 0.0), 0.0);
+                    m_Peaks.insert(i + xmin, y);
                 }
             }
 
             // Paint peaks
-            painter2.setPen(m_maxFftColor);
             for(auto peakx : m_Peaks.keys()) {
                 const float peakv = m_Peaks.value(peakx);
-                painter2.drawEllipse(QRect(peakx - 5.0, peakv - 5.0, 10.0, 10.0));
+                painter2.setPen(Qt::black);
+                painter2.drawEllipse(
+                    QRectF(peakx - 5.0 + shadowOffset, peakv - 5.0 + shadowOffset,
+                           10.0, 10.0));
+                painter2.setPen(m_maxFftColor);
+                painter2.drawEllipse(
+                    QRectF(peakx - 5.0, peakv - 5.0,
+                           10.0, 10.0));
             }
         }
 
@@ -1723,7 +1701,8 @@ void CPlotter::drawOverlay()
     float   adjoffset;
     float   dbstepsize;
     float   mindbadj;
-    QFontMetrics    metrics(m_Font);
+    QFontMetrics metrics(m_Font);
+    const double shadowOffset = metrics.height() / 20.0;
     int     w = qRound(m_OverlayPixmap.width() / m_DPR);
     int     h = qRound(m_OverlayPixmap.height() / m_DPR);
 
@@ -1921,7 +1900,6 @@ void CPlotter::drawOverlay()
     {
         double tw = w;
         double xD = (double)i * pixperdiv + adjoffset;
-        double shadowOffset = metrics.height() / 20.0;
         if (xD > m_YAxisWidth)
         {
             // Shadow

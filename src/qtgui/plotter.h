@@ -16,7 +16,7 @@
 
 #define PEAK_CLICK_MAX_H_DISTANCE 10 //Maximum horizontal distance of clicked point from peak
 #define PEAK_CLICK_MAX_V_DISTANCE 20 //Maximum vertical distance of clicked point from peak
-#define PEAK_H_TOLERANCE 5           // Minimum spacing of peaks for peak detection
+#define PEAK_WINDOW_HALF_WIDTH    10
 
 
 class CPlotter : public QFrame
