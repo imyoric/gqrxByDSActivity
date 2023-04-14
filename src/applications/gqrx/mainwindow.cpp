@@ -99,6 +99,7 @@ MainWindow::MainWindow(const QString& cfgfile, bool edit_conf, QWidget *parent) 
     ui->deltaFreqLabel->setFixedWidth(deltaFreqRect.width());
     setMarkerA(0);
     setMarkerB(0);
+    d_show_markers = true;
 
     /* frequency control widget */
     ui->freqCtrl->setup(0, 0, 9999e6, 1, FCTL_UNIT_NONE);
@@ -166,6 +167,9 @@ MainWindow::MainWindow(const QString& cfgfile, bool edit_conf, QWidget *parent) 
     // freeze plotter on SPACE
     auto *toggle_freeze_shortcut = new QShortcut(QKeySequence(Qt::Key_Space), this);
     QObject::connect(toggle_freeze_shortcut, &QShortcut::activated, this, &MainWindow::toggleFreezeShortcut);
+    // toggle markers on/off
+    auto *toggle_markers_shortcut = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_K), this);
+    QObject::connect(toggle_markers_shortcut, &QShortcut::activated, this, &MainWindow::toggleMarkers);
 
     setCorner(Qt::TopLeftCorner, Qt::LeftDockWidgetArea);
     setCorner(Qt::TopRightCorner, Qt::RightDockWidgetArea);
@@ -2507,4 +2511,10 @@ void MainWindow::rxOffsetZeroShortcut()
 void MainWindow::toggleFreezeShortcut()
 {
     ui->plotter->toggleFreeze();
+}
+
+void MainWindow::toggleMarkers()
+{
+    d_show_markers = !d_show_markers;
+    ui->markerFrame->setVisible(d_show_markers);
 }

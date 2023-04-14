@@ -17,6 +17,7 @@
 #define PEAK_CLICK_MAX_H_DISTANCE 10 //Maximum horizontal distance of clicked point from peak
 #define PEAK_CLICK_MAX_V_DISTANCE 20 //Maximum vertical distance of clicked point from peak
 #define PEAK_WINDOW_HALF_WIDTH    10
+#define PEAK_UPDATE_PERIOD       100 // msec
 
 
 class CPlotter : public QFrame
@@ -114,6 +115,7 @@ public:
     void setFftCenterFreq(qint64 f) {
         qint64 limit = ((qint64)m_SampleFreq + m_Span) / 2 - 1;
         m_FftCenter = qBound(-limit, f, limit);
+        drawOverlay();
     }
 
     int     getNearestPeak(QPoint pt);
@@ -235,6 +237,7 @@ private:
     float       m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
     float       m_fftPeakHoldBuf[MAX_SCREENSIZE]{};
     float       m_fftMinHoldBuf[MAX_SCREENSIZE]{};
+    float       m_peakSmoothBuf[MAX_SCREENSIZE]{}; // used in peak detection
     float      *m_fftData{};     /*! pointer to incoming FFT data */
     float      *m_wfData{};
     int         m_fftDataSize{};
@@ -324,7 +327,8 @@ private:
     // Waterfall averaging
     quint64     tlast_wf_ms;        // last time waterfall has been updated
     quint64     tlast_wf_drawn_ms;  // last time waterfall was draw (accounting for freeze)
-    double     msec_per_wfline;    // milliseconds between waterfall updates
+    double      msec_per_wfline;    // milliseconds between waterfall updates
+    quint64     tlast_peaks_ms;     // last time peaks were updated
     quint64     wf_span;            // waterfall span in milliseconds (0 = auto)
     int         fft_rate;           // expected FFT rate (needed when WF span is auto)
 };

@@ -169,6 +169,7 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     // always update waterfall
     tlast_wf_ms = 0;
     msec_per_wfline = 0;
+    tlast_peaks_ms = 0;
     wf_span = 0;
     fft_rate = 15;
 }
@@ -343,17 +344,15 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
             else
             {
                 emit pandapterRangeChanged(m_PandMindB, m_PandMaxdB);
-
-                if (m_Running)
-                    m_DrawOverlay = true;
-                else
-                    drawOverlay();
+                drawOverlay();
 
                 m_PeakHoldValid = false;
                 m_MinHoldValid = false;
                 m_histIIRValid = false;
 
                 m_Yzero = pt.y();
+
+                updateOverlay();
             }
         }
     }
@@ -377,13 +376,14 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
                 {
                     setFftCenterFreq(m_FftCenter + delta_hz);
                 }
-                updateOverlay();
 
                 m_PeakHoldValid = false;
                 m_MinHoldValid = false;
                 m_histIIRValid = false;
 
                 m_Xzero = pt.x();
+
+                updateOverlay();
             }
         }
     }
@@ -406,10 +406,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
                 clampDemodParameters();
 
                 emit newFilterFreq(m_DemodLowCutFreq, m_DemodHiCutFreq);
-                if (m_Running)
-                    m_DrawOverlay = true;
-                else
-                    drawOverlay();
+                updateOverlay();
             }
             else
             {
@@ -467,10 +464,10 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
                                               m_ClickResolution );
                 emit newDemodFreq(m_DemodCenterFreq,
                                   m_DemodCenterFreq - m_CenterFreq);
-                updateOverlay();
                 m_PeakHoldValid = false;
                 m_MinHoldValid = false;
                 m_histIIRValid = false;
+                updateOverlay();
             }
             else
             {
@@ -1027,10 +1024,10 @@ void CPlotter::resizeEvent(QResizeEvent* )
         fft_plot_height = m_Percent2DScreen * m_Size.height() / 100;
         m_OverlayPixmap = QPixmap(m_Size.width() * m_DPR, fft_plot_height * m_DPR);
         m_OverlayPixmap.setDevicePixelRatio(m_DPR);
-        m_OverlayPixmap.fill(Qt::black);
+        m_OverlayPixmap.fill(Qt::transparent);
         m_2DPixmap = QPixmap(m_Size.width() * m_DPR, fft_plot_height * m_DPR);
         m_2DPixmap.setDevicePixelRatio(m_DPR);
-        m_2DPixmap.fill(Qt::black);
+        m_2DPixmap.fill(PLOTTER_BGD_COLOR);
 
         int height = m_Size.height() - fft_plot_height;
         if (m_WaterfallPixmap.isNull())
@@ -1057,6 +1054,7 @@ void CPlotter::resizeEvent(QResizeEvent* )
     }
 
     drawOverlay();
+    draw();
     emit newSize();
 
     m_Frozen = false;
@@ -1086,17 +1084,10 @@ void CPlotter::draw()
     // TODO: make into a setting?
     const bool histogramFastAttack = false;
 
-    if (m_DrawOverlay)
-    {
-        drawOverlay();
-        m_DrawOverlay = false;
-    }
-
     QPointF avgLineBuf[MAX_SCREENSIZE];
     QPointF maxLineBuf[MAX_SCREENSIZE];
 
-    if (!m_Running)
-        return;
+    const quint64 tnow_ms = QDateTime::currentMSecsSinceEpoch();
 
     const double wfWidth = m_WaterfallPixmap.width() / m_DPR;
     const double wfHeight = m_WaterfallPixmap.height() / m_DPR;
@@ -1105,8 +1096,10 @@ void CPlotter::draw()
     const double shadowOffset = metrics.height() / 20.0;
 
     bool doPlotter = panWidth > 0 && panHeight > 0;
-    bool doWaterfall = wfWidth > 0 && wfHeight > 0;
     bool doHistogram = m_PlotMode == PLOT_MODE_HISTOGRAM;
+
+    // Waterfall is advanced only if visible and running
+    bool doWaterfall = wfWidth > 0 && wfHeight > 0 && m_Running;
 
     // Scale plotter for graph height
     const double panddBGainFactor = panHeight / fabs(m_PandMaxdB - m_PandMindB);
@@ -1285,13 +1278,10 @@ void CPlotter::draw()
         }
     }
 
-    // get/draw the waterfall
-    // no need to draw if pixmap is invisible
     if (doWaterfall)
     {
         const qint32 w = qRound(wfWidth);
         const qint32 h = qRound(wfHeight);
-        const quint64 tnow_ms = QDateTime::currentMSecsSinceEpoch();
 
         // Pick max or avg for waterfall
         float *dataSource;
@@ -1549,52 +1539,96 @@ void CPlotter::draw()
             else
                 _detectSource = m_fftMaxBuf;
             const float *detectSource = _detectSource;
-            m_Peaks.clear();
 
-            for (i = xmin + pw; i < xmin + npts - pw; ++i)
-            {
-                const float d = detectSource[i];
-                float maxInWindow = std::numeric_limits<float>::lowest();
-                float minInWindow = std::numeric_limits<float>::infinity();
-                // Collect stats for a window of 2 * pw + 1
-                for (j = i - pw; j < i; ++j)
+            // Run peak detection periodically. If overlay will be redrawn, run
+            // peak detection since zoom/pan may have changed.
+            if (tnow_ms > tlast_peaks_ms + PEAK_UPDATE_PERIOD || m_DrawOverlay) {
+                tlast_peaks_ms = tnow_ms;
+                m_Peaks.clear();
+                // Collect statistics (min/max/avg of window) and find sharper peaks
+                for (i = pw; i < npts - pw; ++i)
                 {
-                    const float v = detectSource[j];
-                    maxInWindow = std::max(maxInWindow, v);
-                    minInWindow = std::min(minInWindow, v);
-                }
-                for (j = i + 1; j < i + pw; ++j)
-                {
-                    const float v = detectSource[j];
-                    maxInWindow = std::max(maxInWindow, v);
-                    minInWindow = std::min(minInWindow, v);
+                    const float d = detectSource[i + xmin];
+                    float maxInWindow = std::numeric_limits<float>::lowest();
+                    float minInWindow = std::numeric_limits<float>::infinity();
+                    double sum = d;
+                    for (j = i - pw; j < i; ++j)
+                    {
+                        const float v = detectSource[j + xmin];
+                        maxInWindow = std::max(maxInWindow, v);
+                        minInWindow = std::min(minInWindow, v);
+                        sum += v;
+                    }
+                    for (j = i + 1; j < i + pw; ++j)
+                    {
+                        const float v = detectSource[j + xmin];
+                        maxInWindow = std::max(maxInWindow, v);
+                        minInWindow = std::min(minInWindow, v);
+                        sum += v;
+                    }
+                    m_peakSmoothBuf[i + xmin] = sum / (double)(pw * 2 * 1);
+                    if (d > maxInWindow && d > 2.0 * minInWindow)
+                    {
+                        const double y = std::max(std::min(
+                            panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
+                            panHeight - 0.0), 0.0);
+                        m_Peaks[i + xmin] = y;
+                    }
                 }
 
-                // Pick sharper local peaks
-                if (d > maxInWindow && d > 2.0 * minInWindow)
+                // Fill the ends of the d_peakSmoothBuf with valid end values
+                // and run detection again on smoothed data, looking for wider
+                // peaks
+                for (i = 0; i < pw; ++i)
+                    m_peakSmoothBuf[i + xmin] = 0; // m_peakSmoothBuf[xmin + pw];
+                for (i = npts - pw; i < npts; ++i)
+                    m_peakSmoothBuf[i + xmin] = 0; // m_peakSmoothBuf[xmin + npts - pw - 1];
+                for (i = pw; i < npts - pw; ++i)
                 {
-                    const double y = std::max(std::min(
-                        panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
-                        panHeight - 0.0), 0.0);
-                    m_Peaks.insert(i + xmin, y);
+                    const float d = m_peakSmoothBuf[i + xmin];
+                    float maxInWindow = std::numeric_limits<float>::lowest();
+                    for (j = i - pw; j < i; ++j)
+                    {
+                        const float v = m_peakSmoothBuf[j + xmin];
+                        maxInWindow = std::max(maxInWindow, v);
+                    }
+                    for (j = i + 1; j < i + pw; ++j)
+                    {
+                        const float v = m_peakSmoothBuf[j + xmin];
+                        maxInWindow = std::max(maxInWindow, v);
+                    }
+                    if (d > maxInWindow
+                        && d > 1.0 * m_peakSmoothBuf[i + xmin - pw]
+                        && d > 1.0 * m_peakSmoothBuf[i + xmin + pw])
+                    {
+                        const double y = std::max(std::min(
+                            panddBGainFactor
+                            * (m_PandMaxdB - 10.0 * log10(detectSource[i + xmin])),
+                            panHeight - 0.0), 0.0);
+                        m_Peaks[i + xmin] = y;
+                    }
                 }
             }
 
-            // Paint peaks
+            // Paint peaks with shadow
             for(auto peakx : m_Peaks.keys()) {
                 const float peakv = m_Peaks.value(peakx);
                 painter2.setPen(Qt::black);
-                painter2.drawEllipse(
-                    QRectF(peakx - 5.0 + shadowOffset, peakv - 5.0 + shadowOffset,
-                           10.0, 10.0));
+                painter2.drawEllipse(QRectF(
+                    peakx - 5.0 + shadowOffset, peakv - 5.0 + shadowOffset, 10.0, 10.0));
                 painter2.setPen(m_maxFftColor);
-                painter2.drawEllipse(
-                    QRectF(peakx - 5.0, peakv - 5.0,
-                           10.0, 10.0));
+                painter2.drawEllipse(QRectF(peakx - 5.0, peakv - 5.0, 10.0, 10.0));
             }
         }
 
-        // Add overlay
+        // Update the overlay if needed
+        if (m_DrawOverlay)
+        {
+            drawOverlay();
+            m_DrawOverlay = false;
+        }
+
+        // Draw overlay over plot
         painter2.setCompositionMode(QPainter::CompositionMode_SourceOver);
         painter2.drawPixmap(QPointF(0.0, 0.0), m_OverlayPixmap);
     }
@@ -1673,10 +1707,10 @@ void CPlotter::setPandapterRange(float min, float max)
 
     m_PandMindB = min;
     m_PandMaxdB = max;
-    updateOverlay();
     m_PeakHoldValid = false;
     m_MinHoldValid = false;
     m_histIIRValid = false;
+    updateOverlay();
 }
 
 void CPlotter::setWaterfallRange(float min, float max)
@@ -1708,7 +1742,7 @@ void CPlotter::drawOverlay()
 
     m_OverlayPixmap.fill(Qt::transparent);
 
-    QPainter        painter(&m_OverlayPixmap);
+    QPainter painter(&m_OverlayPixmap);
     painter.setFont(m_Font);
 
     QList<BookmarkInfo> tags;
@@ -1986,16 +2020,6 @@ void CPlotter::drawOverlay()
     painter.setPen(Qt::black);
     painter.drawRect(QRectF(0.0, h - 1.0, w, 1.0));
 
-    if (!m_Running)
-    {
-        // if not running so is no data updates to draw to screen
-        // copy into 2Dbitmap the overlay bitmap.
-        m_2DPixmap = m_OverlayPixmap.copy(m_OverlayPixmap.rect());
-
-        // trigger a new paintEvent
-        update();
-    }
-
     painter.end();
 }
 
@@ -2140,21 +2164,22 @@ void CPlotter::setCenterFreq(quint64 f)
     m_CenterFreq = f;
     m_DemodCenterFreq = m_CenterFreq - offset;
 
-    updateOverlay();
-
     m_PeakHoldValid = false;
     m_MinHoldValid = false;
     m_histIIRValid = false;
     m_IIRValid = false;
+
+    updateOverlay();
 }
 
-// Ensure overlay is updated by either scheduling or forcing a redraw
+// Invalidate overlay. If not running, force a redraw.
 void CPlotter::updateOverlay()
 {
-    if (m_Running)
-        m_DrawOverlay = true;
-    else
-        drawOverlay();
+    m_DrawOverlay = true;
+    if (!m_Running)
+    {
+        draw();
+    }
 }
 
 /** Reset horizontal zoom to 100% and centered around 0. */
@@ -2166,27 +2191,27 @@ void CPlotter::resetHorizontalZoom(void)
     m_PeakHoldValid = false;
     m_MinHoldValid = false;
     m_histIIRValid = false;
+    updateOverlay();
 }
 
 /** Center FFT plot around 0 (corresponds to center freq). */
 void CPlotter::moveToCenterFreq()
 {
     setFftCenterFreq(0);
-    updateOverlay();
     m_PeakHoldValid = false;
     m_MinHoldValid = false;
     m_histIIRValid = false;
+    updateOverlay();
 }
 
 /** Center FFT plot around the demodulator frequency. */
 void CPlotter::moveToDemodFreq()
 {
     setFftCenterFreq(m_DemodCenterFreq-m_CenterFreq);
-    updateOverlay();
-
     m_PeakHoldValid = false;
     m_MinHoldValid = false;
     m_histIIRValid = false;
+    updateOverlay();
 }
 
 /** Set FFT plot color. */

@@ -82,6 +82,7 @@ private:
     qint64 d_hw_freq;
     qint64 d_marker_a;
     qint64 d_marker_b;
+    bool   d_show_markers;
     qint64 d_hw_freq_start{};
     qint64 d_hw_freq_stop{};
 
@@ -137,6 +138,7 @@ private:
     void frequencyFocusShortcut();
     void rxOffsetZeroShortcut();
     void toggleFreezeShortcut();
+    void toggleMarkers();
 
 private slots:
     /* RecentConfig */
