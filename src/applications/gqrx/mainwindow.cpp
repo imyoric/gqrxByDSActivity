@@ -262,27 +262,39 @@ MainWindow::MainWindow(const QString& cfgfile, bool edit_conf, QWidget *parent) 
     connect(uiDockAudio, SIGNAL(audioPlayStarted(QString)), this, SLOT(startAudioPlayback(QString)));
     connect(uiDockAudio, SIGNAL(audioPlayStopped()), this, SLOT(stopAudioPlayback()));
     connect(uiDockAudio, SIGNAL(fftRateChanged(int)), this, SLOT(setAudioFftRate(int)));
+
+    // FFT Dock
     connect(uiDockFft, SIGNAL(fftSizeChanged(int)), this, SLOT(setIqFftSize(int)));
     connect(uiDockFft, SIGNAL(fftRateChanged(int)), this, SLOT(setIqFftRate(int)));
     connect(uiDockFft, SIGNAL(fftWindowChanged(int)), this, SLOT(setIqFftWindow(int)));
-    connect(uiDockFft, SIGNAL(displayDbmChanged(int)), ui->plotter, SLOT(setDisplayDbm(int)));
     connect(uiDockFft, SIGNAL(wfSpanChanged(quint64)), this, SLOT(setWfTimeSpan(quint64)));
     connect(uiDockFft, SIGNAL(fftSplitChanged(int)), this, SLOT(setIqFftSplit(int)));
     connect(uiDockFft, SIGNAL(fftAvgChanged(float)), ui->plotter, SLOT(setFftAvg(float)));
     connect(uiDockFft, SIGNAL(fftZoomChanged(float)), ui->plotter, SLOT(zoomOnXAxis(float)));
     connect(uiDockFft, SIGNAL(waterfallModeChanged(int)), ui->plotter, SLOT(setWaterfallMode(int)));
     connect(uiDockFft, SIGNAL(plotModeChanged(int)), ui->plotter, SLOT(setPlotMode(int)));
+    connect(uiDockFft, SIGNAL(plotScaleChanged(int)), ui->plotter, SLOT(setPlotScale(int)));
+    connect(uiDockFft, SIGNAL(plotPerChanged(int)), ui->plotter, SLOT(setPlotPer(int)));
     connect(uiDockFft, SIGNAL(resetFftZoom()), ui->plotter, SLOT(resetHorizontalZoom()));
     connect(uiDockFft, SIGNAL(gotoFftCenter()), ui->plotter, SLOT(moveToCenterFreq()));
     connect(uiDockFft, SIGNAL(gotoDemodFreq()), ui->plotter, SLOT(moveToDemodFreq()));
-    connect(uiDockFft, SIGNAL(bandPlanChanged(bool)), ui->plotter, SLOT(toggleBandPlan(bool)));
+    connect(uiDockFft, SIGNAL(bandPlanChanged(bool)), ui->plotter, SLOT(enableBandPlan(bool)));
+    connect(uiDockFft, SIGNAL(markersChanged(bool)), ui->plotter, SLOT(enableMarkers(bool)));
+    connect(uiDockFft, SIGNAL(markersChanged(bool)), this, SLOT(enableMarkers(bool)));
     connect(uiDockFft, SIGNAL(wfColormapChanged(const QString)), ui->plotter, SLOT(setWfColormap(const QString)));
     connect(uiDockFft, SIGNAL(wfColormapChanged(const QString)), uiDockAudio, SLOT(setWfColormap(const QString)));
-
     connect(uiDockFft, SIGNAL(pandapterRangeChanged(float,float)),
             ui->plotter, SLOT(setPandapterRange(float,float)));
     connect(uiDockFft, SIGNAL(waterfallRangeChanged(float,float)),
             ui->plotter, SLOT(setWaterfallRange(float,float)));
+    connect(uiDockFft, SIGNAL(fftColorChanged(QColor)), this, SLOT(setFftColor(QColor)));
+    connect(uiDockFft, SIGNAL(fftFillToggled(bool)), this, SLOT(enableFftFill(bool)));
+    connect(uiDockFft, SIGNAL(fftMaxHoldToggled(bool)), ui->plotter, SLOT(enableMaxHold(bool)));
+    connect(uiDockFft, SIGNAL(fftMinHoldToggled(bool)), ui->plotter, SLOT(enableMinHold(bool)));
+    connect(uiDockFft, SIGNAL(peakDetectToggled(bool)), ui->plotter, SLOT(enablePeakDetect(bool)));
+    connect(uiDockRDS, SIGNAL(rdsDecoderToggled(bool)), this, SLOT(setRdsDecoder(bool)));
+
+    // Plotter
     connect(ui->plotter, SIGNAL(pandapterRangeChanged(float,float)),
             uiDockFft, SLOT(setPandapterRange(float,float)));
     connect(ui->plotter, SIGNAL(newZoomLevel(float)),
@@ -290,13 +302,6 @@ MainWindow::MainWindow(const QString& cfgfile, bool edit_conf, QWidget *parent) 
     connect(ui->plotter, SIGNAL(newSize()), this, SLOT(setWfSize()));
     connect(ui->plotter, SIGNAL(markerSelectA(qint64)), this, SLOT(setMarkerA(qint64)));
     connect(ui->plotter, SIGNAL(markerSelectB(qint64)), this, SLOT(setMarkerB(qint64)));
-
-    connect(uiDockFft, SIGNAL(fftColorChanged(QColor)), this, SLOT(setFftColor(QColor)));
-    connect(uiDockFft, SIGNAL(fftFillToggled(bool)), this, SLOT(setFftFill(bool)));
-    connect(uiDockFft, SIGNAL(fftPeakHoldToggled(bool)), this, SLOT(setFftPeakHold(bool)));
-    connect(uiDockFft, SIGNAL(fftMinHoldToggled(bool)), this, SLOT(setFftMinHold(bool)));
-    connect(uiDockFft, SIGNAL(peakDetectionToggled(bool)), this, SLOT(setPeakDetection(bool)));
-    connect(uiDockRDS, SIGNAL(rdsDecoderToggled(bool)), this, SLOT(setRdsDecoder(bool)));
 
     // Bookmarks
     connect(uiDockBookmarks, SIGNAL(newBookmarkActivated(qint64, QString, int)), this, SLOT(onBookmarkActivated(qint64, QString, int)));
@@ -1793,11 +1798,6 @@ void MainWindow::setIqFftWindow(int type)
     rx->set_iq_fft_window(type);
 }
 
-void MainWindow::setIqRbw(int rbw)
-{
-    rx->set_iq_rbw(rbw);
-}
-
 /** Waterfall time span has changed. */
 void MainWindow::setWfTimeSpan(quint64 span_ms)
 {
@@ -1841,25 +1841,10 @@ void MainWindow::setFftColor(const QColor& color)
 }
 
 /** Enable/disable filling the aread below the FFT plot. */
-void MainWindow::setFftFill(bool enable)
+void MainWindow::enableFftFill(bool enable)
 {
-    ui->plotter->setFftFill(enable);
+    ui->plotter->enableFftFill(enable);
     uiDockAudio->setFftFill(enable);
-}
-
-void MainWindow::setFftPeakHold(bool enable)
-{
-    ui->plotter->setPeakHold(enable);
-}
-
-void MainWindow::setFftMinHold(bool enable)
-{
-    ui->plotter->setMinHold(enable);
-}
-
-void MainWindow::setPeakDetection(bool enabled)
-{
-    ui->plotter->setPeakDetection(enabled ,2);
 }
 
 /**
@@ -2513,8 +2498,13 @@ void MainWindow::toggleFreezeShortcut()
     ui->plotter->toggleFreeze();
 }
 
+void MainWindow::enableMarkers(bool enabled)
+{
+    d_show_markers = enabled;
+    ui->markerFrame->setVisible(d_show_markers);
+}
+
 void MainWindow::toggleMarkers()
 {
-    d_show_markers = !d_show_markers;
-    ui->markerFrame->setVisible(d_show_markers);
+    enableMarkers(!d_show_markers);
 }

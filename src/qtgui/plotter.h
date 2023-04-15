@@ -12,7 +12,7 @@
 #define HORZ_DIVS_MAX 12    //50
 #define VERT_DIVS_MIN 5
 #define MAX_SCREENSIZE 16384
-#define HISTOGRAM_SIZE 100   // Multiples of 4 for alignment
+#define MAX_HISTOGRAM_SIZE 128   // Multiples of 4 for alignment
 
 #define PEAK_CLICK_MAX_H_DISTANCE 10 //Maximum horizontal distance of clicked point from peak
 #define PEAK_CLICK_MAX_V_DISTANCE 20 //Maximum vertical distance of clicked point from peak
@@ -41,7 +41,6 @@ public:
     void setTooltipsEnabled(bool enabled) { m_TooltipsEnabled = enabled; }
     void setBookmarksEnabled(bool enabled) { m_BookmarksEnabled = enabled; }
     void setInvertScrolling(bool enabled) { m_InvertScrolling = enabled; }
-    void setBandPlanEnabled(bool enabled) { m_BandPlanEnabled = enabled; }
     void setDXCSpotsEnabled(bool enabled) { m_DXCSpotsEnabled = enabled; }
 
     void setNewFftData(float *fftData, int size);
@@ -115,7 +114,6 @@ public:
     void setFftCenterFreq(qint64 f) {
         qint64 limit = ((qint64)m_SampleFreq + m_Span) / 2 - 1;
         m_FftCenter = qBound(-limit, f, limit);
-        drawOverlay();
     }
 
     int     getNearestPeak(QPoint pt);
@@ -132,6 +130,16 @@ public:
         PLOT_MODE_AVG = 1,
         PLOT_MODE_FILLED = 2,
         PLOT_MODE_HISTOGRAM = 3,
+    };
+
+    enum ePlotScale {
+        PLOT_SCALE_V = 0,
+        PLOT_SCALE_DBM50 = 1
+    };
+
+    enum ePlotPer {
+        PLOT_PER_RBW = 0,
+        PLOT_PER_HZ = 1
     };
 
     enum eWaterfallMode {
@@ -157,21 +165,23 @@ public slots:
     void moveToDemodFreq();
     void zoomOnXAxis(float level);
     void setPlotMode(int mode);
+    void setPlotScale(int mode);
+    void setPlotPer(int per);
     void setWaterfallMode(int mode);
-    void setDisplayDbm(int state);
 
     // other FFT slots
     void setFftPlotColor(const QColor& color);
-    void setFftFill(bool enabled);
-    void setPeakHold(bool enabled);
-    void setMinHold(bool enabled);
+    void enableFftFill(bool enabled);
+    void enableMaxHold(bool enabled);
+    void enableMinHold(bool enabled);
     void setFftAvg(float avg);
     void setFftRange(float min, float max);
     void setWfColormap(const QString &cmap);
     void setPandapterRange(float min, float max);
     void setWaterfallRange(float min, float max);
-    void setPeakDetection(bool enabled, float c);
-    void toggleBandPlan(bool state);
+    void enablePeakDetect(bool enabled);
+    void enableBandPlan(bool enable);
+    void enableMarkers(bool enabled);
     void setMarkers(qint64 a, qint64 b);
     void updateOverlay();
 
@@ -220,22 +230,23 @@ private:
     static void calcDivSize (qint64 low, qint64 high, int divswanted, qint64 &adjlow, qint64 &step, int& divs);
     void        showToolTip(QMouseEvent* event, QString toolTipText);
 
-    bool        m_PeakHoldActive;
-    bool        m_PeakHoldValid;
+    bool        m_MaxHoldActive;
+    bool        m_MaxHoldValid;
     bool        m_MinHoldActive;
     bool        m_MinHoldValid;
+    bool        m_PeakDetectActive;
     bool        m_IIRValid;
     bool        m_histIIRValid;
     float       m_fftMaxBuf[MAX_SCREENSIZE]{};
     float       m_fftAvgBuf[MAX_SCREENSIZE]{};
     float       m_wfMaxBuf[MAX_SCREENSIZE]{};
     float       m_wfAvgBuf[MAX_SCREENSIZE]{};
-    qint32      m_histogram[MAX_SCREENSIZE][HISTOGRAM_SIZE]{};
-    double      m_histIIR[MAX_SCREENSIZE][HISTOGRAM_SIZE]{};
+    qint32      m_histogram[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
+    double      m_histIIR[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
     double      m_histMaxIIR;
     float      *m_fftIIR;
     float       m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
-    float       m_fftPeakHoldBuf[MAX_SCREENSIZE]{};
+    float       m_fftMaxHoldBuf[MAX_SCREENSIZE]{};
     float       m_fftMinHoldBuf[MAX_SCREENSIZE]{};
     float       m_peakSmoothBuf[MAX_SCREENSIZE]{}; // used in peak detection
     float      *m_fftData{};     /*! pointer to incoming FFT data */
@@ -268,6 +279,7 @@ private:
     bool        m_TooltipsEnabled{};  /*!< Tooltips enabled */
     bool        m_BandPlanEnabled;    /*!< Show/hide band plan on spectrum */
     bool        m_BookmarksEnabled;   /*!< Show/hide bookmarks on spectrum */
+    bool        m_MarkersEnabled;     /*!< Show/hide markers on spectrum */
     bool        m_InvertScrolling;
     bool        m_DXCSpotsEnabled;    /*!< Show/hide DXC Spots on spectrum */
     int         m_DemodHiCutFreq;
@@ -302,8 +314,9 @@ private:
     int         m_ClickResolution;
     int         m_FilterClickResolution;
     ePlotMode   m_PlotMode;
+    ePlotScale  m_PlotScale;
+    ePlotPer    m_PlotPer;
     eWaterfallMode m_WaterfallMode;
-    bool d_display_dbm;
 
     int         m_Xzero{};
     int         m_Yzero{};  /*!< Used to measure mouse drag direction. */
@@ -316,10 +329,9 @@ private:
 
     quint32     m_LastSampleRate{};
 
-    QColor      m_avgFftColor, m_maxFftColor, m_FftFillCol, m_PeakHoldColor, m_MinHoldColor;
+    QColor      m_avgFftColor, m_maxFftColor, m_FftFillCol, m_MaxHoldColor, m_MinHoldColor;
     bool        m_FftFill{};
 
-    float       m_PeakDetection{};
     QMap<int,float>   m_Peaks;
 
     QList< QPair<QRect, qint64> >     m_Taglist;

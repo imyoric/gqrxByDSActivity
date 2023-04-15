@@ -69,6 +69,7 @@ public slots:
     void setNewFrequency(qint64 rx_freq);
     void setMarkerA(qint64 freq);
     void setMarkerB(qint64 freq);
+    void enableMarkers(bool enable);
 
 private:
     Ui::MainWindow *ui;
@@ -199,14 +200,10 @@ private slots:
     void setIqFftSize(int size);
     void setIqFftRate(int fps);
     void setIqFftWindow(int type);
-    void setIqRbw(int rbw);
     void setIqFftSplit(int pct_wf);
     void setAudioFftRate(int fps);
     void setFftColor(const QColor& color);
-    void setFftFill(bool enable);
-    void setPeakDetection(bool enabled);
-    void setFftPeakHold(bool enable);
-    void setFftMinHold(bool enable);
+    void enableFftFill(bool enable);
     void setWfTimeSpan(quint64 span_ms);
     void setWfSize();
 

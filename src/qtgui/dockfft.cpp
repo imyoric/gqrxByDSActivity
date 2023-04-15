@@ -45,19 +45,6 @@ DockFft::DockFft(QWidget *parent) :
 {
     ui->setupUi(this);
 
-#ifdef Q_OS_LINUX
-    // buttons can be smaller than 50x32
-    ui->peakDetectionButton->setMinimumSize(48, 24);
-    ui->peakHoldButton->setMinimumSize(48, 24);
-    ui->minHoldButton->setMinimumSize(48, 24);
-    ui->lockButton->setMinimumSize(48, 24);
-    ui->resetButton->setMinimumSize(48, 24);
-    ui->centerButton->setMinimumSize(48, 24);
-    ui->demodButton->setMinimumSize(48, 24);
-    ui->fillButton->setMinimumSize(48, 24);
-    ui->colorPicker->setMinimumSize(48, 24);
-#endif
-
     m_sample_rate = 0.f;
     m_pand_last_modified = false;
 
@@ -71,11 +58,11 @@ DockFft::DockFft(QWidget *parent) :
 
     ui->cmapComboBox->addItem(tr("Gqrx"), "gqrx");
     ui->cmapComboBox->addItem(tr("Viridis"), "viridis");
-    ui->cmapComboBox->addItem(tr("Google Turbo"), "turbo");
+    ui->cmapComboBox->addItem(tr("Turbo"), "turbo");
     ui->cmapComboBox->addItem(tr("Plasma"), "plasma");
-    ui->cmapComboBox->addItem(tr("White Hot Compressed"), "whitehotcompressed");
-    ui->cmapComboBox->addItem(tr("White Hot"), "whitehot");
-    ui->cmapComboBox->addItem(tr("Black Hot"), "blackhot");
+    ui->cmapComboBox->addItem(tr("Wht Cmp"), "whitehotcompressed");
+    ui->cmapComboBox->addItem(tr("Wht Hot"), "whitehot");
+    ui->cmapComboBox->addItem(tr("Blk Hot"), "blackhot");
 }
 DockFft::~DockFft()
 {
@@ -219,10 +206,17 @@ void DockFft::saveSettings(QSettings *settings)
     else
         settings->remove("averaging");
 
-    if (ui->dbmBox->checkState())
-        settings->setValue("display_dbm_hz", true);
+    intval = ui->plotScaleBox->currentIndex();
+    if (intval != 0)
+        settings->setValue("plot_y_unit", intval);
     else
-        settings->remove("display_dbm_hz");
+        settings->remove("plot_y_unit");
+
+    intval = ui->plotPerBox->currentIndex();
+    if (intval != 0)
+        settings->setValue("plot_x_unit", intval);
+    else
+        settings->remove("plot_x_unit");
 
     intval = ui->plotModeBox->currentIndex();
     if (intval != 0)
@@ -230,7 +224,7 @@ void DockFft::saveSettings(QSettings *settings)
     else
         settings->remove("plot_mode");
 
-    intval = ui->waterfallModeBox->currentIndex();
+    intval = ui->wfModeBox->currentIndex();
     if (intval != 0)
         settings->setValue("waterfall_mode", intval);
     else
@@ -243,27 +237,27 @@ void DockFft::saveSettings(QSettings *settings)
 
     QColor fftColor = ui->colorPicker->currentColor();
     if (fftColor != QColor(0xFF,0xFF,0xFF,0xFF))
-        settings->setValue("pandapter_color", fftColor);
+        settings->setValue("plot_color", fftColor);
     else
-        settings->remove("pandapter_color");
+        settings->remove("plot_color");
 
-    if (ui->fillButton->isChecked())
-        settings->remove("pandapter_fill");
+    if (ui->fillCheckBox->checkState() == Qt::Checked)
+        settings->setValue("plot_fill", true);
     else
-        settings->setValue("pandapter_fill", false);
+        settings->remove("plot_fill");
 
     // dB ranges
-    intval = ui->pandRangeSlider->minimumValue();
+    intval = ui->plotRangeSlider->minimumValue();
     if (intval == DEFAULT_FFT_MIN_DB)
-        settings->remove("pandapter_min_db");
+        settings->remove("plot_min_db");
     else
-        settings->setValue("pandapter_min_db", intval);
+        settings->setValue("plot_min_db", intval);
 
-    intval = ui->pandRangeSlider->maximumValue();
+    intval = ui->plotRangeSlider->maximumValue();
     if (intval == DEFAULT_FFT_MAX_DB)
-        settings->remove("pandapter_max_db");
+        settings->remove("plot_max_db");
     else
-        settings->setValue("pandapter_max_db", intval);
+        settings->setValue("plot_max_db", intval);
 
     intval = ui->wfRangeSlider->minimumValue();
     if (intval == DEFAULT_FFT_MIN_DB)
@@ -278,29 +272,35 @@ void DockFft::saveSettings(QSettings *settings)
         settings->setValue("waterfall_max_db", intval);
 
     // pandapter and waterfall ranges locked together
-    if (ui->lockButton->isChecked())
+    if (ui->lockCheckBox->checkState() == Qt::Checked)
         settings->setValue("db_ranges_locked", true);
     else
         settings->remove("db_ranges_locked");
 
     // Band Plan
-    if (ui->bandPlanCheckbox->isChecked())
+    if (ui->bandPlanCheckBox->checkState() == Qt::Checked)
         settings->setValue("bandplan", true);
     else
         settings->remove("bandplan");
 
+    // Markers
+    if (ui->markersCheckBox->checkState() == Qt::Checked)
+        settings->setValue("markers", true);
+    else
+        settings->remove("markers");
+
     // Peak
-    if (ui->peakDetectionButton->isChecked())
+    if (ui->peakDetectCheckBox->checkState() == Qt::Checked)
         settings->setValue("peak_detect", true);
     else
         settings->remove("peak_detect");
 
-    if (ui->peakHoldButton->isChecked())
+    if (ui->maxHoldCheckBox->checkState() == Qt::Checked)
         settings->setValue("peak_hold", true);
     else
         settings->remove("peak_hold");
 
-    if (ui->minHoldButton->isChecked())
+    if (ui->minHoldCheckBox->checkState() == Qt::Checked)
         settings->setValue("min_hold", true);
     else
         settings->remove("min_hold");
@@ -315,12 +315,6 @@ void DockFft::saveSettings(QSettings *settings)
         settings->setValue("fft_zoom", ui->fftZoomSlider->value());
     else
         settings->remove("fft_zoom");
-
-    intval = ui->waterfallModeBox->currentIndex();
-    if (intval != 0)
-        settings->setValue("waterfall_mode", intval);
-    else
-        settings->remove("waterfall_mode");
 
     settings->endGroup();
 }
@@ -359,8 +353,13 @@ void DockFft::readSettings(QSettings *settings)
     if (conv_ok)
         ui->fftAvgSlider->setValue(intval);
 
-    bool_val = settings->value("display_dbm_hz", false).toBool();
-    ui->dbmBox->setChecked(bool_val);
+    intval = settings->value("plot_y_unit", 0).toInt(&conv_ok);
+    if (conv_ok)
+        ui->plotScaleBox->setCurrentIndex(intval);
+
+    intval = settings->value("plot_x_unit", 0).toInt(&conv_ok);
+    if (conv_ok)
+        ui->plotPerBox->setCurrentIndex(intval);
 
     intval = settings->value("plot_mode", 0).toInt(&conv_ok);
     if (conv_ok)
@@ -368,17 +367,17 @@ void DockFft::readSettings(QSettings *settings)
 
     intval = settings->value("waterfall_mode", 0).toInt(&conv_ok);
     if (conv_ok)
-        ui->waterfallModeBox->setCurrentIndex(intval);
+        ui->wfModeBox->setCurrentIndex(intval);
 
     intval = settings->value("split", DEFAULT_FFT_SPLIT).toInt(&conv_ok);
     if (conv_ok)
         ui->fftSplitSlider->setValue(intval);
 
-    color = settings->value("pandapter_color", QColor(0xFF,0xFF,0xFF,0xFF)).value<QColor>();
+    color = settings->value("plot_color", QColor(0xFF,0xFF,0xFF,0xFF)).value<QColor>();
     ui->colorPicker->setCurrentColor(color);
 
-    bool_val = settings->value("pandapter_fill", true).toBool();
-    ui->fillButton->setChecked(bool_val);
+    bool_val = settings->value("plot_fill", false).toBool();
+    ui->fillCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
 
     // delete old dB settings from config
     if (settings->contains("reference_level"))
@@ -387,8 +386,8 @@ void DockFft::readSettings(QSettings *settings)
     if (settings->contains("fft_range"))
         settings->remove("fft_range");
 
-    fft_max = settings->value("pandapter_max_db", DEFAULT_FFT_MAX_DB).toInt();
-    fft_min = settings->value("pandapter_min_db", DEFAULT_FFT_MIN_DB).toInt();
+    fft_max = settings->value("plot_max_db", DEFAULT_FFT_MAX_DB).toInt();
+    fft_min = settings->value("plog_min_db", DEFAULT_FFT_MIN_DB).toInt();
     setPandapterRange(fft_min, fft_max);
     emit pandapterRangeChanged((float) fft_min, (float) fft_max);
 
@@ -398,22 +397,26 @@ void DockFft::readSettings(QSettings *settings)
     emit waterfallRangeChanged((float) fft_min, (float) fft_max);
 
     bool_val = settings->value("db_ranges_locked", false).toBool();
-    ui->lockButton->setChecked(bool_val);
+    ui->lockCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
 
     bool_val = settings->value("bandplan", false).toBool();
-    ui->bandPlanCheckbox->setChecked(bool_val);
+    ui->bandPlanCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
     emit bandPlanChanged(bool_val);
 
+    bool_val = settings->value("markers", false).toBool();
+    ui->markersCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    emit markersChanged(bool_val);
+
     bool_val = settings->value("peak_detect", false).toBool();
-    ui->peakDetectionButton->setChecked(bool_val);
-    emit peakDetectionToggled(bool_val);
+    ui->peakDetectCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    emit peakDetectToggled(bool_val);
 
     bool_val = settings->value("peak_hold", false).toBool();
-    ui->peakHoldButton->setChecked(bool_val);
-    emit fftPeakHoldToggled(bool_val);
+    ui->maxHoldCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    emit fftMaxHoldToggled(bool_val);
 
     bool_val = settings->value("min_hold", false).toBool();
-    ui->minHoldButton->setChecked(bool_val);
+    ui->minHoldCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
     emit fftMinHoldToggled(bool_val);
 
     QString cmap = settings->value("waterfall_colormap", "gqrx").toString();
@@ -426,27 +429,27 @@ void DockFft::readSettings(QSettings *settings)
 
     intval = settings->value("waterfall_mode", 0).toInt(&conv_ok);
     if (conv_ok && intval >=0 && intval <=2)
-        ui->waterfallModeBox->setCurrentIndex(intval);
+        ui->wfModeBox->setCurrentIndex(intval);
 
     settings->endGroup();
 }
 
 void DockFft::setPandapterRange(float min, float max)
 {
-    ui->pandRangeSlider->blockSignals(true);
-    ui->pandRangeSlider->setValues((int) min, (int) max);
-    if (ui->lockButton->isChecked())
+    ui->plotRangeSlider->blockSignals(true);
+    ui->plotRangeSlider->setValues((int) min, (int) max);
+    if (ui->lockCheckBox->checkState() == Qt::Checked)
         ui->wfRangeSlider->setValues((int) min, (int) max);
     m_pand_last_modified = true;
-    ui->pandRangeSlider->blockSignals(false);
+    ui->plotRangeSlider->blockSignals(false);
 }
 
 void DockFft::setWaterfallRange(float min, float max)
 {
     ui->wfRangeSlider->blockSignals(true);
     ui->wfRangeSlider->setValues((int) min, (int) max);
-    if (ui->lockButton->isChecked())
-        ui->pandRangeSlider->setValues((int) min, (int) max);
+    if (ui->lockCheckBox->checkState() == Qt::Checked)
+        ui->plotRangeSlider->setValues((int) min, (int) max);
     m_pand_last_modified = false;
     ui->wfRangeSlider->blockSignals(false);
 }
@@ -480,11 +483,6 @@ void DockFft::on_fftRateComboBox_currentIndexChanged(int index)
 void DockFft::on_fftWinComboBox_currentIndexChanged(int index)
 {
     emit fftWindowChanged(index);
-}
-
-void DockFft::on_dbmBox_stateChanged(int state)
-{
-    emit displayDbmChanged(state);
 }
 
 static const quint64 wf_span_table[] =
@@ -552,7 +550,7 @@ void DockFft::on_fftZoomSlider_valueChanged(int level)
     emit fftZoomChanged((float)level);
 }
 
-void DockFft::on_waterfallModeBox_currentIndexChanged(int index)
+void DockFft::on_wfModeBox_currentIndexChanged(int index)
 {
     emit waterfallModeChanged(index);
 }
@@ -562,9 +560,19 @@ void DockFft::on_plotModeBox_currentIndexChanged(int index)
     emit plotModeChanged(index);
 }
 
-void DockFft::on_pandRangeSlider_valuesChanged(int min, int max)
+void DockFft::on_plotScaleBox_currentIndexChanged(int index)
 {
-    if (ui->lockButton->isChecked())
+    emit plotScaleChanged(index);
+}
+
+void DockFft::on_plotPerBox_currentIndexChanged(int index)
+{
+    emit plotPerChanged(index);
+}
+
+void DockFft::on_plotRangeSlider_valuesChanged(int min, int max)
+{
+    if (ui->lockCheckBox->checkState() == Qt::Checked)
         ui->wfRangeSlider->setValues(min, max);
 
     m_pand_last_modified = true;
@@ -573,8 +581,8 @@ void DockFft::on_pandRangeSlider_valuesChanged(int min, int max)
 
 void DockFft::on_wfRangeSlider_valuesChanged(int min, int max)
 {
-    if (ui->lockButton->isChecked())
-        ui->pandRangeSlider->setValues(min, max);
+    if (ui->lockCheckBox->checkState() == Qt::Checked)
+        ui->plotRangeSlider->setValues(min, max);
 
     m_pand_last_modified = false;
     emit waterfallRangeChanged((float) min, (float) max);
@@ -604,50 +612,55 @@ void DockFft::on_colorPicker_colorChanged(const QColor &color)
 }
 
 /** FFT plot fill button toggled. */
-void DockFft::on_fillButton_toggled(bool checked)
+void DockFft::on_fillCheckBox_stateChanged(int state)
 {
-    emit fftFillToggled(checked);
+    emit fftFillToggled(state == Qt::Checked);
 }
 
 /** peakHold button toggled */
-void DockFft::on_peakHoldButton_toggled(bool checked)
+void DockFft::on_maxHoldCheckBox_stateChanged(int state)
 {
-    emit fftPeakHoldToggled(checked);
+    emit fftMaxHoldToggled(state == Qt::Checked);
 }
 
 /** minHold button toggled */
-void DockFft::on_minHoldButton_toggled(bool checked)
+void DockFft::on_minHoldCheckBox_stateChanged(int state)
 {
-    emit fftMinHoldToggled(checked);
+    emit fftMinHoldToggled(state == Qt::Checked);
 }
 
 /** peakDetection button toggled */
-void DockFft::on_peakDetectionButton_toggled(bool checked)
+void DockFft::on_peakDetectCheckBox_stateChanged(int state)
 {
-    emit peakDetectionToggled(checked);
+    emit peakDetectToggled(state == Qt::Checked);
 }
 
-void DockFft::on_bandPlanCheckbox_stateChanged(int state)
+void DockFft::on_bandPlanCheckBox_stateChanged(int state)
 {
-    emit bandPlanChanged(state == 2);
+    emit bandPlanChanged(state == Qt::Checked);
+}
+
+void DockFft::on_markersCheckBox_stateChanged(int state)
+{
+    emit markersChanged(state == Qt::Checked);
 }
 
 /** lock button toggled */
-void DockFft::on_lockButton_toggled(bool checked)
+void DockFft::on_lockCheckBox_stateChanged(int state)
 {
-    if (checked)
+    if (state == Qt::Checked)
     {
         if (m_pand_last_modified)
         {
-            int min = ui->pandRangeSlider->minimumValue();
-            int max = ui->pandRangeSlider->maximumValue();
+            int min = ui->plotRangeSlider->minimumValue();
+            int max = ui->plotRangeSlider->maximumValue();
             ui->wfRangeSlider->setPositions(min, max);
         }
         else
         {
             int min = ui->wfRangeSlider->minimumValue();
             int max = ui->wfRangeSlider->maximumValue();
-            ui->pandRangeSlider->setPositions(min, max);
+            ui->plotRangeSlider->setPositions(min, max);
         }
     }
 }

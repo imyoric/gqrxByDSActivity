@@ -60,6 +60,8 @@ signals:
     void fftZoomChanged(float level);              /*! Zoom level slider changed. */
     void waterfallModeChanged(int value);          /*! Waterfall mode (max/avg) changed. */
     void plotModeChanged(int value);               /*! 2D plot mode (max/avg/filled) changed. */
+    void plotScaleChanged(int value);              /*! 2D plot scale (V/dBm 50 ohms) changed. */
+    void plotPerChanged(int value);                /*! 2D plot per (RBW/Hz) changed. */
     void fftAvgChanged(float gain);                /*! FFT video filter gain has changed. */
     void pandapterRangeChanged(float min, float max);
     void waterfallRangeChanged(float min, float max);
@@ -68,10 +70,11 @@ signals:
     void gotoDemodFreq(void);                      /*! Center FFT around demodulator frequency. */
     void fftColorChanged(const QColor &);          /*! FFT color has changed. */
     void fftFillToggled(bool fill);                /*! Toggle filling area under FFT plot. */
-    void fftPeakHoldToggled(bool enable);          /*! Toggle peak hold in FFT area. */
+    void fftMaxHoldToggled(bool enable);           /*! Toggle max hold in FFT area. */
     void fftMinHoldToggled(bool enable);           /*! Toggle min hold in FFT area. */
-    void peakDetectionToggled(bool enabled);       /*! Enable peak detection in FFT plot */
+    void peakDetectToggled(bool enabled);          /*! Enable peak detection in FFT plot */
     void bandPlanChanged(bool enabled);            /*! Toggle Band Plan at bottom of FFT area. */
+    void markersChanged(bool enabled);             /*! Toggle markers and on-plot controls. */
     void wfColormapChanged(const QString &cmap);
 
 public slots:
@@ -84,25 +87,27 @@ private slots:
     void on_fftSizeComboBox_currentIndexChanged(int index);
     void on_fftRateComboBox_currentIndexChanged(int index);
     void on_fftWinComboBox_currentIndexChanged(int index);
-    void on_dbmBox_stateChanged(int state);
     void on_wfSpanComboBox_currentIndexChanged(int index);
     void on_fftSplitSlider_valueChanged(int value);
     void on_fftAvgSlider_valueChanged(int value);
     void on_fftZoomSlider_valueChanged(int level);
     void on_plotModeBox_currentIndexChanged(int index);
-    void on_waterfallModeBox_currentIndexChanged(int index);
-    void on_pandRangeSlider_valuesChanged(int min, int max);
+    void on_plotScaleBox_currentIndexChanged(int index);
+    void on_plotPerBox_currentIndexChanged(int index);
+    void on_wfModeBox_currentIndexChanged(int index);
+    void on_plotRangeSlider_valuesChanged(int min, int max);
     void on_wfRangeSlider_valuesChanged(int min, int max);
     void on_resetButton_clicked(void);
     void on_centerButton_clicked(void);
     void on_demodButton_clicked(void);
     void on_colorPicker_colorChanged(const QColor &);
-    void on_fillButton_toggled(bool checked);
-    void on_peakHoldButton_toggled(bool checked);
-    void on_minHoldButton_toggled(bool checked);
-    void on_peakDetectionButton_toggled(bool checked);
-    void on_lockButton_toggled(bool checked);
-    void on_bandPlanCheckbox_stateChanged(int state);
+    void on_fillCheckBox_stateChanged(int state);
+    void on_maxHoldCheckBox_stateChanged(int state);
+    void on_minHoldCheckBox_stateChanged(int state);
+    void on_peakDetectCheckBox_stateChanged(int state);
+    void on_lockCheckBox_stateChanged(int state);
+    void on_bandPlanCheckBox_stateChanged(int state);
+    void on_markersCheckBox_stateChanged(int state);
     void on_cmapComboBox_currentIndexChanged(int index);
 
 private:
