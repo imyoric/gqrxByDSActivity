@@ -462,6 +462,11 @@ void DockFft::setZoomLevel(float level)
     ui->fftZoomSlider->blockSignals(false);
 }
 
+void DockFft::setMarkersEnabled(bool enable)
+{
+    ui->markersCheckBox->setCheckState(enable ? Qt::Checked : Qt::Unchecked);
+}
+
 /** FFT size changed. */
 void DockFft::on_fftSizeComboBox_currentIndexChanged(int index)
 {

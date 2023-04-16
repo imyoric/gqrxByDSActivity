@@ -2507,4 +2507,5 @@ void MainWindow::enableMarkers(bool enabled)
 void MainWindow::toggleMarkers()
 {
     enableMarkers(!d_show_markers);
+    uiDockFft->setMarkersEnabled(d_show_markers);
 }

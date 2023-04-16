@@ -82,6 +82,7 @@ public slots:
     void setWaterfallRange(float min, float max);
     void setWfResolution(quint64 msec_per_line);
     void setZoomLevel(float level);
+    void setMarkersEnabled(bool enable);
 
 private slots:
     void on_fftSizeComboBox_currentIndexChanged(int index);
