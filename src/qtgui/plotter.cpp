@@ -172,6 +172,8 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     tlast_wf_ms = 0;
     msec_per_wfline = 0;
     tlast_peaks_ms = 0;
+    wf_epoch = 0;
+    wf_count = 0;
     wf_span = 0;
     fft_rate = 15;
 }
@@ -572,7 +574,9 @@ void CPlotter::setWaterfallSpan(quint64 span_ms)
 {
     wf_span = span_ms;
     if (m_WaterfallPixmap.height() > 0) {
-        msec_per_wfline = wf_span / m_WaterfallPixmap.height();
+        wf_epoch = QDateTime::currentMSecsSinceEpoch();
+        wf_count = 0;
+        msec_per_wfline = (double)wf_span / (double)m_WaterfallPixmap.height();
     }
     clearWaterfall();
 }
@@ -730,15 +734,15 @@ void CPlotter::mousePressEvent(QMouseEvent * event)
                     if (m_fftDataSize && ((selectBuf != m_fftMaxHoldBuf) || m_MaxHoldValid))
                     {
                         // Find the data value of the click y()
-                        const double panHeight = m_2DPixmap.height() / m_DPR;
-                        const double panddBGainFactor = panHeight / fabs(m_PandMaxdB - m_PandMindB);
+                        const double plotHeight = m_2DPixmap.height() / m_DPR;
+                        const double panddBGainFactor = plotHeight / fabs(m_PandMaxdB - m_PandMindB);
                         const double vlog = m_PandMaxdB - event->y() / panddBGainFactor;
                         const float v = powf(10.0, vlog / 10.0);
 
                         // Ignore clicks exactly on the plot, below the
                         // pandapter, or when uninitialized
                         if (v != selectBuf[event->x()]
-                            && event->y() < panHeight
+                            && event->y() < plotHeight
                             && m_fftDataSize > 0)
                         {
                             int xLeft = event->x();
@@ -1025,40 +1029,43 @@ void CPlotter::resizeEvent(QResizeEvent* )
     if (!size().isValid())
         return;
 
-    if (m_Size != size())
+    m_DPR = devicePixelRatioF();
+    QSize s = QSize(size().width() * m_DPR, size().height() * m_DPR);
+    if (m_Size != s)
     {
-        // if changed, resize pixmaps to new screensize
-        int     fft_plot_height;
+        m_Size = s;
 
-        m_Size = size();
-        m_DPR = devicePixelRatio();
-        fft_plot_height = m_Percent2DScreen * m_Size.height() / 100;
-        m_OverlayPixmap = QPixmap(m_Size.width() * m_DPR, fft_plot_height * m_DPR);
+        // These numbers are actual screen size
+        const int plotWidth = m_Size.width();
+        const int plotHeight = m_Percent2DScreen * m_Size.height() / 100.0;
+        const int wfHeight = m_Size.height() - plotHeight;
+
+        m_OverlayPixmap = QPixmap(plotWidth, plotHeight);
         m_OverlayPixmap.setDevicePixelRatio(m_DPR);
         m_OverlayPixmap.fill(Qt::transparent);
-        m_2DPixmap = QPixmap(m_Size.width() * m_DPR, fft_plot_height * m_DPR);
+
+        m_2DPixmap = QPixmap(plotWidth, plotHeight);
         m_2DPixmap.setDevicePixelRatio(m_DPR);
         m_2DPixmap.fill(PLOTTER_BGD_COLOR);
 
-        int height = m_Size.height() - fft_plot_height;
         if (m_WaterfallPixmap.isNull())
         {
-            m_WaterfallPixmap = QPixmap(m_Size.width(), height);
+            m_WaterfallPixmap = QPixmap(plotWidth, wfHeight);
             m_WaterfallPixmap.fill(Qt::black);
         }
         else
         {
-            m_WaterfallPixmap = m_WaterfallPixmap.scaled(m_Size.width(), height,
-                                                         Qt::IgnoreAspectRatio,
-                                                         Qt::SmoothTransformation);
+            m_WaterfallPixmap = m_WaterfallPixmap.scaled(
+                plotWidth, wfHeight,
+                Qt::IgnoreAspectRatio,
+                Qt::SmoothTransformation);
         }
-
         m_MaxHoldValid = false;
         m_MinHoldValid = false;
         m_histIIRValid = false;
 
-        if (wf_span > 0 && height > 0)
-            msec_per_wfline = (double)wf_span / (double)height;
+        // if (wf_span > 0 && wfHeight > 0)
+        //     msec_per_wfline = (double)wf_span / (double)wfHeight;
 
         if (msec_per_wfline > 0)
             clearWaterfallBuf();
@@ -1074,13 +1081,14 @@ void CPlotter::resizeEvent(QResizeEvent* )
 // Called by QT when screen needs to be redrawn
 void CPlotter::paintEvent(QPaintEvent *)
 {
+    const int plotHeight = (double)m_Percent2DScreen * (double)m_Size.height() / 100.0 / m_DPR;
+
     QPainter painter(this);
 
-    painter.drawPixmap(0, 0, m_2DPixmap);
+    painter.drawPixmap(QPointF(0.0, 0.0), m_2DPixmap);
     if (!m_Frozen)
     {
-        painter.drawPixmap(0, m_Percent2DScreen * m_Size.height() / 100,
-                           m_WaterfallPixmap);
+        painter.drawPixmap(QPointF(0.0, plotHeight), m_WaterfallPixmap);
     }
 }
 
@@ -1100,20 +1108,19 @@ void CPlotter::draw()
 
     const quint64 tnow_ms = QDateTime::currentMSecsSinceEpoch();
 
-    const double wfWidth = m_WaterfallPixmap.width() / m_DPR;
+    const double plotWidth = m_2DPixmap.width() / m_DPR;
+    const double plotHeight = m_2DPixmap.height() / m_DPR;
     const double wfHeight = m_WaterfallPixmap.height() / m_DPR;
-    const double panWidth = m_2DPixmap.width() / m_DPR;
-    const double panHeight = m_2DPixmap.height() / m_DPR;
     const double shadowOffset = metrics.height() / 20.0;
 
-    bool doPlotter = panWidth > 0 && panHeight > 0;
+    bool doPlotter = plotWidth > 0 && plotHeight > 0;
     bool doHistogram = m_PlotMode == PLOT_MODE_HISTOGRAM;
 
     // Waterfall is advanced only if visible and running
-    bool doWaterfall = wfWidth > 0 && wfHeight > 0 && m_Running;
+    bool doWaterfall = wfHeight > 0 && m_Running;
 
     // Scale plotter for graph height
-    const double panddBGainFactor = panHeight / fabs(m_PandMaxdB - m_PandMindB);
+    const double panddBGainFactor = plotHeight / fabs(m_PandMaxdB - m_PandMindB);
     // Scale waterfall and histogram for colormap
     const double wfdBGainFactor = 256.0 / fabs(m_WfMaxdB - m_WfMindB);
 
@@ -1132,11 +1139,6 @@ void CPlotter::draw()
     // Start and end FFT bins to be displayed, clipped to valid fft bins
     const qint32 minbin = std::max(startBin, 0);
     const qint32 maxbin = std::min(endBin, m_fftDataSize - 1);
-
-    // Note: making assumption that 2D plot and waterfall are the same width,
-    // as the are today. If this changes, xmin and xmax need to be calculated
-    // separately for each. Much easier and more efficient if they stay the same.
-    const double plotWidth = panWidth;
 
     // Number of bins mapped across plot, taking zoom into account
     const double numBins = endBin - startBin;
@@ -1183,7 +1185,7 @@ void CPlotter::draw()
     double vsum;
     double vsumIIR;
 
-    if (numBins >= panWidth)
+    if (numBins >= plotWidth)
     {
         qint32 count;
         xmin = qRound((double)(minbin - startBin) * xScale);
@@ -1264,7 +1266,7 @@ void CPlotter::draw()
         m_MaxHoldValid = true;
         m_MinHoldValid = true;
     }
-    // panWidth > m_fftDataSize uses no averaging
+    // plotWidth > m_fftDataSize uses no averaging
     else
     {
         xmin = qRound((double)(minbin - startBin) * xScale);
@@ -1300,11 +1302,10 @@ void CPlotter::draw()
         }
     }
 
+    const int npts = xmax - xmin;
+
     if (doWaterfall)
     {
-        const qint32 w = qRound(wfWidth);
-        const qint32 h = qRound(wfHeight);
-
         // Pick max or avg for waterfall
         float *dataSource;
         if (m_WaterfallMode == WATERFALL_MODE_AVG)
@@ -1315,37 +1316,39 @@ void CPlotter::draw()
         // if not in "auto" mode, store max waterfall data
         if (msec_per_wfline > 0)
         {
-            for (i = 0; i < qMin(w, MAX_SCREENSIZE); i++)
+            for (i = 0; i < npts; ++i)
                 m_wfbuf[i] = std::max(m_wfbuf[i], dataSource[i]);
         }
 
         // is it time to update waterfall?
-        if (tnow_ms - tlast_wf_ms >= msec_per_wfline)
+        if (tnow_ms - wf_epoch > wf_count * msec_per_wfline)
         {
-            tlast_wf_ms = tnow_ms;
+            ++wf_count;
 
             // cursor times are relative to last time drawn
+            tlast_wf_ms = tnow_ms;
             if (!m_Frozen)
                 tlast_wf_drawn_ms = tnow_ms;
 
             // move current data down one line(must do before attaching a QPainter object)
-            m_WaterfallPixmap.scroll(0, 1, 0, 0, w, h);
+            m_WaterfallPixmap.scroll(0, 1, m_WaterfallPixmap.rect());
 
             QPainter painter1(&m_WaterfallPixmap);
 
             // draw new line of fft data at top of waterfall bitmap
+            // draw black areas where data will not be draw
             painter1.setPen(QColor(0, 0, 0));
-            painter1.drawRect(QRect(0.0, 0.0, xmin, 1.0));
-            painter1.drawRect(QRect(xmax, 0.0, w, 1.0));
+            painter1.drawRect(QRectF(0.0, 0.0, xmin, 1.0));
+            painter1.drawRect(QRectF(xmax, 0.0, plotWidth, 1.0));
 
             // Use stored max if in manual mode, else current data
             const float *wfSource = msec_per_wfline > 0 ? m_wfbuf : dataSource;
-            for (i = xmin; i < xmax; i++)
+            for (i = 0; i < npts; ++i)
             {
                 qint32 cidx = qRound((m_WfMaxdB - 10.0 * log10(wfSource[i])) * wfdBGainFactor);
                 cidx = std::max(std::min(cidx, 255), 0);
                 painter1.setPen(m_ColorTbl[255 - cidx]);
-                painter1.drawRect(QRect(i, 0.0, 1.0, 1.0));
+                painter1.drawRect(QRectF(i + xmin, 0.0, 1.0, 1.0));
             }
 
             if (msec_per_wfline > 0)
@@ -1358,8 +1361,6 @@ void CPlotter::draw()
     {
         m_2DPixmap.fill(PLOTTER_BGD_COLOR);
         QPainter painter2(&m_2DPixmap);
-
-        const int npts = xmax - xmin;
 
         // Update histogram IIR
         if (m_PlotMode == PLOT_MODE_HISTOGRAM)
@@ -1439,15 +1440,15 @@ void CPlotter::draw()
         }
 
         const bool showHistHighlights = histBinsDisplayed >= MAX_HISTOGRAM_SIZE / 2;
-        const double binSizeY = panHeight / (double)histBinsDisplayed;
+        const double binSizeY = plotHeight / (double)histBinsDisplayed;
         for (i = 0; i < npts; i++)
         {
             const double yMaxD = std::max(std::min(
                 panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMaxBuf[i + xmin])),
-                panHeight), 0.0);
+                plotHeight), 0.0);
             const double yAvgD = std::max(std::min(
                 panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftAvgBuf[i + xmin])),
-                panHeight), 0.0);
+                plotHeight), 0.0);
 
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
             {
@@ -1457,12 +1458,12 @@ void CPlotter::draw()
                 const double zoomBoostAdd = histogramFastAttack ? 20 / histAvg : 0.0;
 
                 const double *histData = m_histIIR[i + xmin];
-                double topBin = panHeight;
+                double topBin = plotHeight;
                 for (j = 0; j < histBinsDisplayed; ++j)
                 {
-                    qint32 cidx = qRound(histData[j] * zoomBoostMul / m_histMaxIIR * 255.0 * .8);
+                    qint32 cidx = qRound(histData[j] * zoomBoostMul / m_histMaxIIR * 255.0 * .7);
                     if (cidx > 0) {
-                        cidx += 50;  // 255 * 0.8 = 204, + 50 = 254
+                        cidx += 65;  // 255 * 0.7 = 178, + 65 = 243
                         cidx += zoomBoostAdd;
                         cidx = std::max(std::min(cidx, 255), 0);
                         QColor c = m_ColorTbl[cidx];
@@ -1474,7 +1475,7 @@ void CPlotter::draw()
                     }
                 }
                 // Highlight the top bin, if it isn't too crowded
-                if (topBin != panHeight && showHistHighlights)
+                if (topBin != plotHeight && showHistHighlights)
                     painter2.fillRect(QRectF(i + xmin, topBin, 1.0, binSizeY), maxLineColor);
             }
 
@@ -1490,13 +1491,13 @@ void CPlotter::draw()
             }
             // Fill area between markers, even if they are off screen
             if (fillMarkers && i > minMarker && i < maxMarker) {
-                painter2.fillRect(QRectF(i + xmin, yMaxD + 1.0, 1.0, panHeight - yMaxD), abFillBrush);
+                painter2.fillRect(QRectF(i + xmin, yMaxD + 1.0, 1.0, plotHeight - yMaxD), abFillBrush);
             }
             if (m_FftFill)
             {
                 // Fill below max in max mode, else fill below avg
                 double y = m_PlotMode == PLOT_MODE_MAX ? yMaxD : yAvgD;
-                painter2.fillRect(QRectF(i + xmin, y + 1.0, 1.0, panHeight - y), m_FftFillCol);
+                painter2.fillRect(QRectF(i + xmin, y + 1.0, 1.0, plotHeight - y), m_FftFillCol);
             }
             if (m_PlotMode == PLOT_MODE_FILLED)
             {
@@ -1524,7 +1525,7 @@ void CPlotter::draw()
             {
                 const double yMaxHoldD = std::max(std::min(
                     panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMaxHoldBuf[i + xmin])),
-                    panHeight), 0.0);
+                    plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMaxHoldD);
             }
             painter2.setPen(m_MaxHoldColor);
@@ -1541,7 +1542,7 @@ void CPlotter::draw()
             {
                 const double yMinHoldD = std::max(std::min(
                     panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMinHoldBuf[i + xmin])),
-                    panHeight), 0.0);
+                    plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMinHoldD);
             }
             painter2.setPen(m_MinHoldColor);
@@ -1596,7 +1597,7 @@ void CPlotter::draw()
                     {
                         const double y = std::max(std::min(
                             panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
-                            panHeight - 0.0), 0.0);
+                            plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
                 }
@@ -1629,7 +1630,7 @@ void CPlotter::draw()
                         const double y = std::max(std::min(
                             panddBGainFactor
                             * (m_PandMaxdB - 10.0 * log10(detectSource[i + xmin])),
-                            panHeight - 0.0), 0.0);
+                            plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
                 }
@@ -1662,6 +1663,17 @@ void CPlotter::draw()
     update();
 }
 
+void CPlotter::setRunningState(bool running)
+{
+    // Reset waterfall time and clear waterfall, since time is no longer correct
+    if (running and !m_Running)
+    {
+        setWaterfallSpan(wf_span);
+    }
+
+    m_Running = running;
+}
+
 /**
  * Set new FFT data.
  * @param fftData Pointer to the new FFT data (same data for pandapter and waterfall).
@@ -1672,10 +1684,6 @@ void CPlotter::draw()
  */
 void CPlotter::setNewFftData(float *fftData, int size)
 {
-    /** FIXME **/
-    if (!m_Running)
-        m_Running = true;
-
     if (size != m_fftDataSize)
     {
         m_MaxHoldValid = false;
@@ -1763,8 +1771,8 @@ void CPlotter::drawOverlay()
     float   mindbadj;
     QFontMetrics metrics(m_Font);
     const double shadowOffset = metrics.height() / 20.0;
-    int     w = qRound(m_OverlayPixmap.width() / m_DPR);
-    int     h = qRound(m_OverlayPixmap.height() / m_DPR);
+    int     w = qRound((float)m_OverlayPixmap.width() / m_DPR);
+    int     h = qRound((float)m_OverlayPixmap.height() / m_DPR);
 
     m_OverlayPixmap.fill(Qt::transparent);
 

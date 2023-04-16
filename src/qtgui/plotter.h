@@ -33,7 +33,7 @@ public:
 
     //void SetSdrInterface(CSdrInterface* ptr){m_pSdrInterface = ptr;}
     void draw(); //call to draw new fft data onto screen plot
-    void setRunningState(bool running) { m_Running = running; }
+    void setRunningState(bool running);
     void setClickResolution(int clickres) { m_ClickResolution = clickres; }
     void setFilterClickResolution(int clickres) { m_FilterClickResolution = clickres; }
     void setFilterBoxEnabled(bool enabled) { m_FilterBoxEnabled = enabled; }
@@ -340,6 +340,8 @@ private:
     quint64     tlast_wf_ms;        // last time waterfall has been updated
     quint64     tlast_wf_drawn_ms;  // last time waterfall was draw (accounting for freeze)
     double      msec_per_wfline;    // milliseconds between waterfall updates
+    quint64     wf_epoch;           // msec time of last waterfal rate change
+    quint64     wf_count;           // waterfall lines drawn since last rate change
     quint64     tlast_peaks_ms;     // last time peaks were updated
     quint64     wf_span;            // waterfall span in milliseconds (0 = auto)
     int         fft_rate;           // expected FFT rate (needed when WF span is auto)
