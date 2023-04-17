@@ -150,9 +150,9 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     m_Running = false;
     m_DrawOverlay = true;
     m_Frozen = false;
-    m_2DPixmap = QPixmap(0,0);
-    m_OverlayPixmap = QPixmap(0,0);
-    m_WaterfallPixmap = QPixmap(0,0);
+    m_2DPixmap = QPixmap();
+    m_OverlayPixmap = QPixmap();
+    m_WaterfallPixmap = QPixmap();
     m_Size = QSize(0,0);
     m_GrabPosition = 0;
     m_Percent2DScreen = 35;	//percent of screen used for 2D display
@@ -1065,28 +1065,37 @@ void CPlotter::resizeEvent(QResizeEvent* )
         m_2DPixmap = QPixmap(plotWidth, plotHeight);
         m_2DPixmap.fill(PLOTTER_BGD_COLOR);
 
-        if (m_WaterfallPixmap.isNull())
-        {
+        // Create the pixmap if null. If the pixmap already exists, scale width
+        // and copy whatever portion is possible. Scaling height would
+        // invalidate time.
+        if (!m_WaterfallPixmap) {
             m_WaterfallPixmap = QPixmap(plotWidth, wfHeight);
             m_WaterfallPixmap.fill(Qt::black);
         }
         else
         {
-            m_WaterfallPixmap = m_WaterfallPixmap.scaled(
-                plotWidth, wfHeight,
-                Qt::IgnoreAspectRatio,
-                Qt::SmoothTransformation);
+            QPixmap oldWaterfall = m_WaterfallPixmap.scaled(
+                plotWidth, m_WaterfallPixmap.height(),
+                Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            m_WaterfallPixmap = QPixmap(plotWidth, wfHeight);
+            m_WaterfallPixmap.fill(Qt::black);
+            QRect copyRect(0, 0,
+                            qMin(plotWidth, oldWaterfall.width()),
+                            qMin(wfHeight, oldWaterfall.height()));
+            QPainter painter(&m_WaterfallPixmap);
+            painter.drawPixmap(QPointF(0.0, 0.0), oldWaterfall, copyRect);
         }
         m_MaxHoldValid = false;
         m_MinHoldValid = false;
         m_histIIRValid = false;
 
+        // Waterfall accumulator my be the wrong size now, so invalidate.
         if (msec_per_wfline > 0)
             clearWaterfallBuf();
     }
 
     drawOverlay();
-    draw();
+    draw(false);
     emit newSize();
 
     m_Frozen = false;
@@ -1122,7 +1131,7 @@ void CPlotter::paintEvent(QPaintEvent *)
 }
 
 // Called to update spectrum data for displaying on the screen
-void CPlotter::draw()
+void CPlotter::draw(bool newData)
 {
     qint32        i, j, x;
     qint32        xmin, xmax;
@@ -1141,12 +1150,6 @@ void CPlotter::draw()
     const double plotHeight = m_2DPixmap.height();
     const double wfHeight = m_WaterfallPixmap.height();
     const double shadowOffset = metrics.height() / 20.0;
-
-    bool doPlotter = plotWidth > 0 && plotHeight > 0;
-    bool doHistogram = m_PlotMode == PLOT_MODE_HISTOGRAM;
-
-    // Waterfall is advanced only if visible and running
-    bool doWaterfall = wfHeight > 0 && m_Running;
 
     // Scale plotter for graph height
     const double panddBGainFactor = plotHeight / fabs(m_PandMaxdB - m_PandMindB);
@@ -1174,6 +1177,12 @@ void CPlotter::draw()
     // Pixels per mapped bin
     const double xScale = plotWidth / numBins;
 
+    // Redraw the plot if it is visible.
+    const bool doPlotter = plotWidth > 0 && plotHeight > 0;
+
+    // Do not waste time with histogram calculations unless in this mode.
+    const bool doHistogram = m_PlotMode == PLOT_MODE_HISTOGRAM;
+
     // Use fewer histogram bins when statistics are sparse
     const int histBinsDisplayed = std::min(
         MAX_HISTOGRAM_SIZE,
@@ -1185,6 +1194,23 @@ void CPlotter::draw()
             )
         );
     const double histdBGainFactor = (double)histBinsDisplayed / fabs(m_PandMaxdB - m_PandMindB);
+
+    // Show max and average highlights on histogram if it would not be too
+    // cluttered
+    const bool showHistHighlights = histBinsDisplayed >= MAX_HISTOGRAM_SIZE / 2;
+
+    // Waterfall is advanced only if visible and running, and if there is new
+    // data. Repaints for other reasons do not require any action here.
+    const bool doWaterfall = wfHeight > 0 && m_Running && newData;
+
+    // Draw avg line, except in max mode. Suppress if it would clutter histogram.
+    const bool doAvgLine = m_PlotMode != PLOT_MODE_MAX
+                           && (m_PlotMode != PLOT_MODE_HISTOGRAM
+                               || showHistHighlights);
+
+    // Draw max line, except in avg and histogram modes
+    const bool doMaxLine = m_PlotMode != PLOT_MODE_AVG
+                           && m_PlotMode != PLOT_MODE_HISTOGRAM;
 
     // Initialize results
     memset(m_fftMaxBuf, 0, sizeof(m_fftMaxBuf));
@@ -1444,8 +1470,6 @@ void CPlotter::draw()
             maxLineColor.setAlpha(255);
 
         QPen maxLinePen = QPen(maxLineColor);
-        // Performance hit - add back in if needed
-        // maxLinePen.setWidthF(m_DPR);
 
         // Same color as max in avg mode, different for filled mode
         QPen avgLinePen;
@@ -1460,8 +1484,6 @@ void CPlotter::draw()
             avgLineCol.setAlpha(192);
             avgLinePen = QPen(avgLineCol);
         }
-        // Performance hit - add back in if needed
-        // avgLinePen.setWidthF(m_DPR);
 
         bool fillMarkers = (m_MarkersEnabled && m_MarkerFreqA != 0 && m_MarkerFreqB != 0);
         int minMarker = -1;
@@ -1474,7 +1496,6 @@ void CPlotter::draw()
             maxMarker = std::max(ax, bx);
         }
 
-        const bool showHistHighlights = histBinsDisplayed >= MAX_HISTOGRAM_SIZE / 2;
         const double binSizeY = plotHeight / (double)histBinsDisplayed;
         for (i = 0; i < npts; i++)
         {
@@ -1514,16 +1535,11 @@ void CPlotter::draw()
                     painter2.fillRect(QRectF(i + xmin, topBin, 1.0, binSizeY), maxLineColor);
             }
 
-            // Max points
-            if (m_PlotMode != PLOT_MODE_HISTOGRAM)
-            {
+            // Add max, average points if they will be drawn
+            if (doMaxLine)
                 maxLineBuf[i] = QPointF(i + xmin + 0.5, yMaxD + 0.5);
-            }
-            // Avg points
-            if (m_PlotMode != PLOT_MODE_MAX)
-            {
+            if (doAvgLine)
                 avgLineBuf[i] = QPointF(i + xmin + 0.5, yAvgD + 0.5);
-            }
 
             // Fill area between markers, even if they are off screen
             double yFill = m_PlotMode == PLOT_MODE_MAX ? yMaxD : yAvgD;
@@ -1540,16 +1556,13 @@ void CPlotter::draw()
             }
         }
 
-        // Draw avg line, except in max mode
-        if (m_PlotMode != PLOT_MODE_MAX
-            && (m_PlotMode != PLOT_MODE_HISTOGRAM || showHistHighlights)) {
-            painter2.setPen(avgLinePen);
-            painter2.drawPolyline(avgLineBuf, npts);
-        }
-        // Draw max line, except in avg mode
-        if (m_PlotMode != PLOT_MODE_AVG && m_PlotMode != PLOT_MODE_HISTOGRAM) {
+        if (doMaxLine) {
             painter2.setPen(maxLinePen);
             painter2.drawPolyline(maxLineBuf, npts);
+        }
+        if (doAvgLine) {
+            painter2.setPen(avgLinePen);
+            painter2.drawPolyline(avgLineBuf, npts);
         }
 
         // Peak hold
@@ -1758,7 +1771,7 @@ void CPlotter::setNewFftData(float *fftData, int size)
     m_fftData = fftData;
     m_fftDataSize = size;
 
-    draw();
+    draw(true);
 }
 
 void CPlotter::setFftAvg(float avg)
@@ -2255,7 +2268,7 @@ void CPlotter::updateOverlay()
     m_DrawOverlay = true;
     if (!m_Running)
     {
-        draw();
+        draw(false);
     }
 }
 

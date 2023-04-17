@@ -32,7 +32,7 @@ public:
     QSize sizeHint() const override;
 
     //void SetSdrInterface(CSdrInterface* ptr){m_pSdrInterface = ptr;}
-    void draw(); //call to draw new fft data onto screen plot
+    void draw(bool newData); //call to draw new fft data onto screen plot
     void setRunningState(bool running);
     void setClickResolution(int clickres) { m_ClickResolution = clickres; }
     void setFilterClickResolution(int clickres) { m_FilterClickResolution = clickres; }
