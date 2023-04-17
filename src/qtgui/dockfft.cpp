@@ -241,7 +241,7 @@ void DockFft::saveSettings(QSettings *settings)
     else
         settings->remove("plot_color");
 
-    if (ui->fillCheckBox->checkState() == Qt::Checked)
+    if (ui->fillCheckBox->isChecked())
         settings->setValue("plot_fill", true);
     else
         settings->remove("plot_fill");
@@ -272,35 +272,35 @@ void DockFft::saveSettings(QSettings *settings)
         settings->setValue("waterfall_max_db", intval);
 
     // pandapter and waterfall ranges locked together
-    if (ui->lockCheckBox->checkState() == Qt::Checked)
+    if (ui->lockCheckBox->isChecked())
         settings->setValue("db_ranges_locked", true);
     else
         settings->remove("db_ranges_locked");
 
     // Band Plan
-    if (ui->bandPlanCheckBox->checkState() == Qt::Checked)
+    if (ui->bandPlanCheckBox->isChecked())
         settings->setValue("bandplan", true);
     else
         settings->remove("bandplan");
 
     // Markers
-    if (ui->markersCheckBox->checkState() == Qt::Checked)
+    if (ui->markersCheckBox->isChecked())
         settings->setValue("markers", true);
     else
         settings->remove("markers");
 
     // Peak
-    if (ui->peakDetectCheckBox->checkState() == Qt::Checked)
+    if (ui->peakDetectCheckBox->isChecked())
         settings->setValue("peak_detect", true);
     else
         settings->remove("peak_detect");
 
-    if (ui->maxHoldCheckBox->checkState() == Qt::Checked)
+    if (ui->maxHoldCheckBox->isChecked())
         settings->setValue("peak_hold", true);
     else
         settings->remove("peak_hold");
 
-    if (ui->minHoldCheckBox->checkState() == Qt::Checked)
+    if (ui->minHoldCheckBox->isChecked())
         settings->setValue("min_hold", true);
     else
         settings->remove("min_hold");
@@ -380,7 +380,7 @@ void DockFft::readSettings(QSettings *settings)
     ui->colorPicker->setCurrentColor(color);
 
     bool_val = settings->value("plot_fill", false).toBool();
-    ui->fillCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    ui->fillCheckBox->setChecked(bool_val);
 
     // delete old dB settings from config
     if (settings->contains("reference_level"))
@@ -400,26 +400,26 @@ void DockFft::readSettings(QSettings *settings)
     emit waterfallRangeChanged((float) fft_min, (float) fft_max);
 
     bool_val = settings->value("db_ranges_locked", false).toBool();
-    ui->lockCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    ui->lockCheckBox->setChecked(bool_val);
 
     bool_val = settings->value("bandplan", false).toBool();
-    ui->bandPlanCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    ui->bandPlanCheckBox->setChecked(bool_val);
     emit bandPlanChanged(bool_val);
 
     bool_val = settings->value("markers", false).toBool();
-    ui->markersCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    ui->markersCheckBox->setChecked(bool_val);
     emit markersChanged(bool_val);
 
     bool_val = settings->value("peak_detect", false).toBool();
-    ui->peakDetectCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    ui->peakDetectCheckBox->setChecked(bool_val);
     emit peakDetectToggled(bool_val);
 
     bool_val = settings->value("peak_hold", false).toBool();
-    ui->maxHoldCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    ui->maxHoldCheckBox->setChecked(bool_val);
     emit fftMaxHoldToggled(bool_val);
 
     bool_val = settings->value("min_hold", false).toBool();
-    ui->minHoldCheckBox->setCheckState(bool_val ? Qt::Checked : Qt::Unchecked);
+    ui->minHoldCheckBox->setChecked(bool_val);
     emit fftMinHoldToggled(bool_val);
 
     QString cmap = settings->value("waterfall_colormap", "gqrx").toString();
@@ -441,7 +441,7 @@ void DockFft::setPandapterRange(float min, float max)
 {
     ui->plotRangeSlider->blockSignals(true);
     ui->plotRangeSlider->setValues((int) min, (int) max);
-    if (ui->lockCheckBox->checkState() == Qt::Checked)
+    if (ui->lockCheckBox->isChecked())
         ui->wfRangeSlider->setValues((int) min, (int) max);
     m_pand_last_modified = true;
     ui->plotRangeSlider->blockSignals(false);
@@ -451,7 +451,7 @@ void DockFft::setWaterfallRange(float min, float max)
 {
     ui->wfRangeSlider->blockSignals(true);
     ui->wfRangeSlider->setValues((int) min, (int) max);
-    if (ui->lockCheckBox->checkState() == Qt::Checked)
+    if (ui->lockCheckBox->isChecked())
         ui->plotRangeSlider->setValues((int) min, (int) max);
     m_pand_last_modified = false;
     ui->wfRangeSlider->blockSignals(false);
@@ -583,7 +583,7 @@ void DockFft::on_plotPerBox_currentIndexChanged(int index)
 
 void DockFft::on_plotRangeSlider_valuesChanged(int min, int max)
 {
-    if (ui->lockCheckBox->checkState() == Qt::Checked)
+    if (ui->lockCheckBox->isChecked())
         ui->wfRangeSlider->setValues(min, max);
 
     m_pand_last_modified = true;
@@ -592,7 +592,7 @@ void DockFft::on_plotRangeSlider_valuesChanged(int min, int max)
 
 void DockFft::on_wfRangeSlider_valuesChanged(int min, int max)
 {
-    if (ui->lockCheckBox->checkState() == Qt::Checked)
+    if (ui->lockCheckBox->isChecked())
         ui->plotRangeSlider->setValues(min, max);
 
     m_pand_last_modified = false;
