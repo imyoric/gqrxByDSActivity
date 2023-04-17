@@ -62,6 +62,8 @@ Q_LOGGING_CATEGORY(plotter, "plotter")
 #define HOR_MARGIN 5
 #define VER_MARGIN 5
 
+const bool logBeforeAvg = true;
+
 int F2B(float f)
 {
     int b = (f >= 1.0 ? 255 : (f <= 0.0 ? 0 : (int)floor(f * 256.0)));
@@ -142,7 +144,7 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     m_HorDivs = 12;
     m_VerDivs = 6;
     m_PandMaxdB = m_WfMaxdB = 0.f;
-    m_PandMindB = m_WfMindB = -150.f;
+    m_PandMindB = m_WfMindB = FFT_MAX_DB;
 
     m_FreqUnits = 1000000;
     m_CursorCaptured = NOCAP;
@@ -926,6 +928,7 @@ void CPlotter::zoomStepX(float step, int x)
 
     m_MaxHoldValid = false;
     m_MinHoldValid = false;
+    m_IIRValid = false;
     m_histIIRValid = false;
 }
 
@@ -942,6 +945,7 @@ void CPlotter::setPlotMode(int mode)
     m_PlotMode = (ePlotMode)mode;
     m_MaxHoldValid = false;
     m_MinHoldValid = false;
+    // Do not need to invalidate IIR data when switching modes
 }
 
 void CPlotter::setPlotScale(int scale)
@@ -1089,6 +1093,7 @@ void CPlotter::resizeEvent(QResizeEvent* )
         m_MaxHoldValid = false;
         m_MinHoldValid = false;
         m_histIIRValid = false;
+        // Do not need to invalidate IIR data (just histogram IIR)
 
         // Waterfall accumulator my be the wrong size now, so invalidate.
         if (msec_per_wfline > 0)
@@ -1272,15 +1277,17 @@ void CPlotter::draw(bool newData)
             // New (or last) pixel - output values
             if (x != xprev || i == maxbin)
             {
-                vmax = std::max(vmax, fmin);
+                if (!logBeforeAvg)
+                    vmax = std::max(vmax, fmin);
                 m_wfMaxBuf[xprev] = vmax;
 
-                vmaxIIR = std::max(vmaxIIR, fmin);
+                if (!logBeforeAvg)
+                    vmaxIIR = std::max(vmaxIIR, fmin);
                 m_fftMaxBuf[xprev] = vmaxIIR;
 
-                const float vavg = std::max((float)(vsum / count), fmin);
+                const float vavg = std::max((float)(vsum / count), logBeforeAvg ? FFT_MIN_DB : fmin);
                 m_wfAvgBuf[xprev] = vavg;
-                const float vavgIIR = std::max((float)(vsumIIR / count), fmin);
+                const float vavgIIR = std::max((float)(vsumIIR / count), logBeforeAvg ? FFT_MIN_DB : fmin);
                 m_fftAvgBuf[xprev] = vavgIIR;
 
                 // New peak hold value if greater, or reset
@@ -1493,10 +1500,16 @@ void CPlotter::draw(bool newData)
         for (i = 0; i < npts; i++)
         {
             const double yMaxD = std::max(std::min(
-                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxBuf[i + xmin])),
+                logBeforeAvg ?
+                    panddBGainFactor * (m_PandMaxdB - m_fftMaxBuf[i + xmin])
+                    :
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxBuf[i + xmin])),
                 plotHeight), 0.0);
             const double yAvgD = std::max(std::min(
-                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftAvgBuf[i + xmin])),
+                logBeforeAvg ?
+                    panddBGainFactor * (m_PandMaxdB - m_fftAvgBuf[i + xmin])
+                    :
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftAvgBuf[i + xmin])),
                 plotHeight), 0.0);
 
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
@@ -1560,7 +1573,10 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMaxHoldD = std::max(std::min(
-                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxHoldBuf[i + xmin])),
+                    logBeforeAvg ?
+                        panddBGainFactor * (m_PandMaxdB - m_fftMaxHoldBuf[i + xmin])
+                        :
+                        panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMaxHoldD);
             }
@@ -1577,7 +1593,10 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMinHoldD = std::max(std::min(
-                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMinHoldBuf[i + xmin])),
+                    logBeforeAvg ?
+                        panddBGainFactor * (m_PandMaxdB - m_fftMinHoldBuf[i + xmin])
+                    :
+                        panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMinHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMinHoldD);
             }
@@ -1632,7 +1651,10 @@ void CPlotter::draw(bool newData)
                     if (d > maxInWindow && d > 2.0 * minInWindow)
                     {
                         const double y = std::max(std::min(
-                            panddBGainFactor * (m_PandMaxdB - logFactor * log10(d)),
+                            logBeforeAvg ?
+                                panddBGainFactor * (m_PandMaxdB - d)
+                                :
+                                panddBGainFactor * (m_PandMaxdB - logFactor * log10(d)),
                             plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
@@ -1665,7 +1687,10 @@ void CPlotter::draw(bool newData)
                     {
                         const double y = std::max(std::min(
                             panddBGainFactor
-                            * (m_PandMaxdB - 10.0 * log10(detectSource[i + xmin])),
+                            * (logBeforeAvg ?
+                                (m_PandMaxdB - detectSource[i + xmin])
+                                :
+                                (m_PandMaxdB - logFactor * log10(detectSource[i + xmin]))),
                             plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
@@ -1709,6 +1734,14 @@ void CPlotter::setRunningState(bool running)
     if (running and !m_Running)
     {
         setWaterfallSpan(wf_span);
+
+        // Invalidate any existing data
+        m_MaxHoldValid = false;
+        m_MinHoldValid = false;
+        m_IIRValid = false;
+        m_histIIRValid = false;
+        m_histMaxIIR = logBeforeAvg ? FFT_MIN_DB : std::numeric_limits<float>::min();
+
     }
 
     m_Running = running;
@@ -1726,24 +1759,17 @@ void CPlotter::setNewFftData(float *fftData, int size)
 {
     if (size != m_fftDataSize)
     {
-        m_MaxHoldValid = false;
-        m_MinHoldValid = false;
-        m_histIIRValid = false;
-
         // Reallocate and invalidate IIRs
         m_fftIIR.resize(size);
+        m_MaxHoldValid = false;
+        m_MinHoldValid = false;
         m_IIRValid = false;
+        m_histIIRValid = false;
+        m_histMaxIIR = logBeforeAvg ? FFT_MIN_DB : std::numeric_limits<float>::min();
     }
 
-    // Reset IIR and histogram IIR if invalid
-    if (m_IIRValid == false)
-    {
-        for (int i = 0; i < size; ++i)
-            m_fftIIR[i] = 0.0;
-
-        m_IIRValid = true;
-        m_histMaxIIR = 0.0;
-    }
+    // Scale log10 by 20 for V, 10 for dBm
+    const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
 
     // For V, V^2 -> V/RBW
     if (m_PlotScale == PLOT_SCALE_V) {
@@ -1764,14 +1790,21 @@ void CPlotter::setNewFftData(float *fftData, int size)
             fftData[i] = fftData[i] * pwr_scale;
     }
 
-    // Update IIR, compensating for frame rate
+    // Make sure zeros don't get through to log calcs
+    const float fmin = std::numeric_limits<float>::min();
+
+    // Update IIR, compensating for frame rate. If IIR is invalid, set alpha to
+    // use latest value.
     const float gamma = 8.0;
     const float a1 = pow(1.0 - m_alpha, gamma / (float)fft_rate);
     const float a = 1.0 - a1;
     for (int i = 0; i < size; ++i)
     {
-        m_fftIIR[i] = a * fftData[i] + a1 * m_fftIIR[i];
+        const float v = logBeforeAvg ? logFactor * log10(std::max(fftData[i], fmin)) : fftData[i];
+        m_fftIIR[i] = m_IIRValid ? a * v + a1 * m_fftIIR[i] : v;
     }
+
+    m_IIRValid = true;
 
     m_fftData = fftData;
     m_fftDataSize = size;
