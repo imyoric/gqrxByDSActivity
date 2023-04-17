@@ -1135,7 +1135,7 @@ void CPlotter::draw(bool newData)
 {
     qint32        i, j, x;
     qint32        xmin, xmax;
-    double        histMax, histTotal;
+    double        histMax;
     QFontMetricsF metrics(m_Font);
 
     // TODO: make into a setting?
@@ -1387,7 +1387,7 @@ void CPlotter::draw(bool newData)
 
             // Use stored max if in manual mode, else current data
             const float *wfSource = msec_per_wfline > 0 ? m_wfbuf : dataSource;
-            for (i = 0; i < npts; ++i)
+            for (i = xmin; i < xmax; ++i)
             {
                 qint32 cidx = qRound((m_WfMaxdB - logFactor * log10(wfSource[i + xmin])) * wfdBGainFactor);
                 cidx = std::max(std::min(cidx, 255), 0);
@@ -1407,14 +1407,13 @@ void CPlotter::draw(bool newData)
         QPainter painter2(&m_2DPixmap);
 
         // Update histogram IIR
-        histTotal = 0.0;
         if (m_PlotMode == PLOT_MODE_HISTOGRAM)
         {
             constexpr float gamma = 8.0;
             const float a1 = powf(1.0 - m_alpha, gamma / (double)fft_rate);
             const float a = 1.0 - a1;
             histMax = 0.0;
-            for (i = 0; i < npts; ++i) {
+            for (i = xmin; i < xmax; ++i) {
                 for (j = 0; j < histBinsDisplayed; ++j)
                 {
                     double histV;
@@ -1428,7 +1427,6 @@ void CPlotter::draw(bool newData)
                     else
                         histV = a1 * histPrev + a * histNew;
                     m_histIIR[i][j] = histV;
-                    histTotal += histV;
                     histMax = std::max(histMax, histV);
                 }
             }
@@ -1497,19 +1495,14 @@ void CPlotter::draw(bool newData)
 
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
             {
-                // Color map adjustments based on statistics. Emprically derived.
-                const double histAvg = histTotal / ((double)histBinsDisplayed * (double)npts);
-                const double zoomBoostMul = histogramFastAttack ? 1.0 + 0.5 / histAvg : 1.0;
-                const double zoomBoostAdd = histogramFastAttack ? 20 / histAvg : 0.0;
-
                 const double *histData = m_histIIR[i + xmin];
                 double topBin = plotHeight;
                 for (j = 0; j < histBinsDisplayed; ++j)
                 {
-                    qint32 cidx = qRound(histData[j] * zoomBoostMul / m_histMaxIIR * 255.0 * .7);
+                    qint32 cidx = qRound(histData[j] / m_histMaxIIR * 255.0 * .7);
                     if (cidx > 0) {
                         cidx += 65;  // 255 * 0.7 = 178, + 65 = 243
-                        cidx += zoomBoostAdd;
+                        // Histogram IIR can cause out-of-range cidx
                         cidx = std::max(std::min(cidx, 255), 0);
                         QColor c = m_ColorTbl[cidx];
                         // Paint rectangle
