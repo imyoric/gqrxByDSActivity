@@ -354,9 +354,12 @@ void DockFft::readSettings(QSettings *settings)
         ui->fftAvgSlider->setValue(intval);
 
     intval = settings->value("plot_y_unit", 0).toInt(&conv_ok);
-    if (conv_ok)
+    if (conv_ok) {
         ui->plotScaleBox->setCurrentIndex(intval);
-
+        // For V (index 0) "per" is N/A
+        ui->plotPerSlashLabel->setVisible(intval != 0);
+        ui->plotPerBox->setVisible(intval != 0);
+    }
     intval = settings->value("plot_x_unit", 0).toInt(&conv_ok);
     if (conv_ok)
         ui->plotPerBox->setCurrentIndex(intval);
@@ -567,6 +570,9 @@ void DockFft::on_plotModeBox_currentIndexChanged(int index)
 
 void DockFft::on_plotScaleBox_currentIndexChanged(int index)
 {
+    // For V (index 0) "per" is N/A
+    ui->plotPerSlashLabel->setVisible(index != 0);
+    ui->plotPerBox->setVisible(index != 0);
     emit plotScaleChanged(index);
 }
 

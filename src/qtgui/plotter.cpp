@@ -45,7 +45,7 @@ Q_LOGGING_CATEGORY(plotter, "plotter")
 #define CUR_CUT_DELTA 5		//cursor capture delta in pixels
 
 #define FFT_MIN_DB     -160.f
-#define FFT_MAX_DB      0.f
+#define FFT_MAX_DB      30.f
 
 #define FILTER_WIDTH_MIN_HZ 200
 
@@ -1218,22 +1218,13 @@ void CPlotter::draw(bool newData)
     if (doHistogram)
         memset(m_histogram, 0, sizeof(m_histogram));
 
-    // Scale for V/RBW or dBm/Hz into 50 ohms
-    float _pwr_scale;
-    if (m_PlotScale == PLOT_SCALE_DBM50)
-        _pwr_scale = 1000.0 / (2.0 * fftSize * 50.0);
-    else // if PLOT_SCALE_V
-        _pwr_scale = 1.0 / fftSize;
-    if (m_PlotPer == PLOT_PER_HZ)
-        _pwr_scale /= sampleFreq;
-    else // if PLOT_PER_RBW
-        _pwr_scale /= fftSize;
-    const float pwr_scale = _pwr_scale;
-
     // Peak means "peak of average" in AVG mode, else "peak of max"
     const bool peakIsAverage = m_PlotMode == PLOT_MODE_AVG;
     // Min mean "min of peak" in PEAK mode, else "min of average"
     const bool minIsAverage = m_PlotMode != PLOT_MODE_MAX;
+
+    // Scale log10 by 20 for V, 10 for dBm
+    const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
 
     float vmax;
     float vmaxIIR;
@@ -1253,10 +1244,8 @@ void CPlotter::draw(bool newData)
             x = qRound((double)(i - startBin) * xScale);
 
             // Plot uses IIR output. Histogram and waterfall use raw fft data.
-            // const float v = 10.0 * log10f(m_fftData[i] * pwr_scale);
-            // const float viir = 10.0 * log10f(m_fftIIR[i] * pwr_scale);
-            const float v = m_fftData[i] * pwr_scale;
-            const float viir = m_fftIIR[i] * pwr_scale;
+            const float v = m_fftData[i];
+            const float viir = m_fftIIR[i];
 
             if (first)
             {
@@ -1271,7 +1260,7 @@ void CPlotter::draw(bool newData)
             // out-of-range values, rather than clipping.
             if (doHistogram)
             {
-                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - 10.0 * log10(v)));
+                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10(v)));
                 if (bin >= 0 && bin < histBinsDisplayed)
                         m_histogram[x][bin] += 1;
             }
@@ -1330,8 +1319,8 @@ void CPlotter::draw(bool newData)
         for (i = xmin; i < xmax; i++)
         {
             j = qRound((double)i / xScale + startBin);
-            const float v = m_fftData[j] * pwr_scale;
-            const float viir = m_fftIIR[j] * pwr_scale;
+            const float v = m_fftData[j];
+            const float viir = m_fftIIR[j];
 
             m_wfMaxBuf[i] = v;
             m_wfAvgBuf[i] = v;
@@ -1350,7 +1339,7 @@ void CPlotter::draw(bool newData)
             // out-of-range values, rather than clipping.
             if (doHistogram)
             {
-                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - 10.0 * log10(v)));
+                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10(v)));
                 if (bin >= 0 && bin < histBinsDisplayed)
                         m_histogram[i][bin] += 1;
             }
@@ -1400,7 +1389,7 @@ void CPlotter::draw(bool newData)
             const float *wfSource = msec_per_wfline > 0 ? m_wfbuf : dataSource;
             for (i = 0; i < npts; ++i)
             {
-                qint32 cidx = qRound((m_WfMaxdB - 10.0 * log10(wfSource[i + xmin])) * wfdBGainFactor);
+                qint32 cidx = qRound((m_WfMaxdB - logFactor * log10(wfSource[i + xmin])) * wfdBGainFactor);
                 cidx = std::max(std::min(cidx, 255), 0);
                 painter1.setPen(m_ColorTbl[255 - cidx]);
                 painter1.drawRect(QRectF(i + xmin, 0.0, 1.0 * m_DPR, 1.0 * m_DPR));
@@ -1500,10 +1489,10 @@ void CPlotter::draw(bool newData)
         for (i = 0; i < npts; i++)
         {
             const double yMaxD = std::max(std::min(
-                panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMaxBuf[i + xmin])),
+                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxBuf[i + xmin])),
                 plotHeight), 0.0);
             const double yAvgD = std::max(std::min(
-                panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftAvgBuf[i + xmin])),
+                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftAvgBuf[i + xmin])),
                 plotHeight), 0.0);
 
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
@@ -1572,7 +1561,7 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMaxHoldD = std::max(std::min(
-                    panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMaxHoldBuf[i + xmin])),
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMaxHoldD);
             }
@@ -1589,7 +1578,7 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMinHoldD = std::max(std::min(
-                    panddBGainFactor * (m_PandMaxdB - 10.0 * log10(m_fftMinHoldBuf[i + xmin])),
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMinHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMinHoldD);
             }
@@ -1644,7 +1633,7 @@ void CPlotter::draw(bool newData)
                     if (d > maxInWindow && d > 2.0 * minInWindow)
                     {
                         const double y = std::max(std::min(
-                            panddBGainFactor * (m_PandMaxdB - 10.0 * log10(d)),
+                            panddBGainFactor * (m_PandMaxdB - logFactor * log10(d)),
                             plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
@@ -1757,6 +1746,25 @@ void CPlotter::setNewFftData(float *fftData, int size)
 
         m_IIRValid = true;
         m_histMaxIIR = 0.0;
+    }
+
+    // For V, V^2 -> V/RBW
+    if (m_PlotScale == PLOT_SCALE_V) {
+        for (int i = 0; i < size; ++i)
+            fftData[i] = sqrtf(fftData[i]) / (float)size;
+    }
+    // For DBM, give choose dBm/RBW or dBm/Hz, scaled to 50 ohm.
+    // 1000 V^2 / 2R
+    else
+    {
+        float _pwr_scale;
+        if (m_PlotPer == PLOT_PER_RBW)
+            _pwr_scale = 1000.0 / (2.0 * 50.0 * (float)size * (float)size);
+        else
+            _pwr_scale = 1000.0 / (2.0 * 50.0 * (float)size * (float)m_SampleFreq);
+        const float pwr_scale = _pwr_scale;
+        for (int i = 0; i < size; ++i)
+            fftData[i] = fftData[i] * pwr_scale;
     }
 
     // Update IIR, compensating for frame rate
