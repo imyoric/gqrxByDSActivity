@@ -95,7 +95,7 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     setAttribute(Qt::WA_NoSystemBackground, true);
     setMouseTracking(true);
 
-    setTooltipsEnabled(false);
+    m_TooltipsEnabled = false;
     setStatusTip(tr(STATUS_TIP));
     setWfColormap("gqrx");
 
@@ -105,7 +105,6 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     m_MinHoldValid = false;
     m_IIRValid = false;
     m_histIIRValid = false;
-    m_fftIIR = nullptr;
     m_alpha = 1.0;
     m_histMaxIIR = 0.0;
 
@@ -950,6 +949,7 @@ void CPlotter::setPlotScale(int scale)
     m_PlotScale = (ePlotScale)scale;
     m_MaxHoldValid = false;
     m_MinHoldValid = false;
+    m_IIRValid = false;
     m_histIIRValid = false;
 }
 
@@ -958,6 +958,7 @@ void CPlotter::setPlotPer(int per)
     m_PlotPer = (ePlotPer)per;
     m_MaxHoldValid = false;
     m_MinHoldValid = false;
+    m_IIRValid = false;
     m_histIIRValid = false;
 }
 
@@ -1226,6 +1227,9 @@ void CPlotter::draw(bool newData)
     // Scale log10 by 20 for V, 10 for dBm
     const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
 
+    // Make sure zeros don't get through to log calcs
+    const float fmin = std::numeric_limits<float>::min();
+
     float vmax;
     float vmaxIIR;
     double vsum;
@@ -1268,13 +1272,15 @@ void CPlotter::draw(bool newData)
             // New (or last) pixel - output values
             if (x != xprev || i == maxbin)
             {
-
+                vmax = std::max(vmax, fmin);
                 m_wfMaxBuf[xprev] = vmax;
+
+                vmaxIIR = std::max(vmaxIIR, fmin);
                 m_fftMaxBuf[xprev] = vmaxIIR;
 
-                const float vavg = vsum / count;
+                const float vavg = std::max((float)(vsum / count), fmin);
                 m_wfAvgBuf[xprev] = vavg;
-                const float vavgIIR = vsumIIR / count;
+                const float vavgIIR = std::max((float)(vsumIIR / count), fmin);
                 m_fftAvgBuf[xprev] = vavgIIR;
 
                 // New peak hold value if greater, or reset
@@ -1725,9 +1731,7 @@ void CPlotter::setNewFftData(float *fftData, int size)
         m_histIIRValid = false;
 
         // Reallocate and invalidate IIRs
-        if (m_fftIIR)
-            delete m_fftIIR;
-        m_fftIIR = new float[size];
+        m_fftIIR.resize(size);
         m_IIRValid = false;
     }
 

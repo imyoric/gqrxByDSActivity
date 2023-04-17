@@ -220,24 +220,11 @@ void rx_fft_c::set_window_type(int wintype)
         d_wintype = gr::fft::window::WIN_HAMMING;
     }
 
-    const float rbw_fft = d_quadrate / (float)d_fftsize;
-    unsigned int ntaps;
-    if (d_rbw > rbw_fft)
-        ntaps = std::max((unsigned int)lround(d_quadrate / d_rbw), 1U);
-    else
-        ntaps = d_fftsize;
-
     d_window.clear();
-    d_window = gr::fft::window::build((gr::fft::window::win_type)d_wintype, ntaps, 6.76);
+    d_window = gr::fft::window::build((gr::fft::window::win_type)d_wintype, d_fftsize, 6.76);
     d_window.resize(d_fftsize);
     volk_32f_accumulator_s32f(&tmp, d_window.data(), d_fftsize);
     volk_32f_s32f_normalize(d_window.data(), tmp / float(d_fftsize), d_fftsize);
-}
-
-void rx_fft_c::set_rbw(int rbw)
-{
-    d_rbw = (float)rbw;
-    set_window_type(d_wintype);
 }
 
 /*! \brief Get currently used window type. */

@@ -244,7 +244,7 @@ private:
     qint32      m_histogram[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
     double      m_histIIR[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
     double      m_histMaxIIR;
-    float      *m_fftIIR;
+    std::vector<float> m_fftIIR;
     float       m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
     float       m_fftMaxHoldBuf[MAX_SCREENSIZE]{};
     float       m_fftMinHoldBuf[MAX_SCREENSIZE]{};
@@ -270,13 +270,13 @@ private:
     qint64      m_CenterFreq;       // The HW frequency
     qint64      m_FftCenter;        // Center freq in the -span ... +span range
     qint64      m_DemodCenterFreq;
-    qint64      m_MarkerFreqA;
-    qint64      m_MarkerFreqB;
+    qint64      m_MarkerFreqA{};
+    qint64      m_MarkerFreqB{};
     qint64      m_StartFreqAdj{};
     qint64      m_FreqPerDiv{};
     bool        m_CenterLineEnabled;  /*!< Distinguish center line. */
     bool        m_FilterBoxEnabled;   /*!< Draw filter box. */
-    bool        m_TooltipsEnabled{};  /*!< Tooltips enabled */
+    bool        m_TooltipsEnabled;    /*!< Tooltips enabled */
     bool        m_BandPlanEnabled;    /*!< Show/hide band plan on spectrum */
     bool        m_BookmarksEnabled;   /*!< Show/hide bookmarks on spectrum */
     bool        m_MarkersEnabled;     /*!< Show/hide markers on spectrum */
@@ -339,7 +339,7 @@ private:
     // Waterfall averaging
     quint64     tlast_wf_ms;        // last time waterfall has been updated
     quint64     tlast_wf_drawn_ms;  // last time waterfall was draw (accounting for freeze)
-    double      msec_per_wfline;    // milliseconds between waterfall updates
+    double      msec_per_wfline{};  // milliseconds between waterfall updates
     quint64     wf_epoch;           // msec time of last waterfal rate change
     quint64     wf_count;           // waterfall lines drawn since last rate change
     quint64     tlast_peaks_ms;     // last time peaks were updated

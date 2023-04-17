@@ -90,7 +90,6 @@ public:
     void get_fft_data(std::complex<float>* fftPoints, unsigned int &fftSize);
 
     void set_window_type(int wintype);
-    void set_rbw(int rbw);
     int  get_window_type() const;
 
     void set_fft_size(unsigned int fftsize);
