@@ -227,6 +227,32 @@ private:
         return ((x > (xr - delta)) && (x < (xr + delta)));
     }
 
+    // IIR is used for visual effect only, so accuracy is not important. This
+    // approximation depends on the IEC 559 (IEEE 754) layout of a double.
+    // Found in article at:
+    // https://martin.ankerl.com/2012/01/25/optimized-approximative-pow-in-c-and-cpp/
+    double fastPow(double a, double b) const
+    {
+        union {
+            double d;
+            int x[2];
+        } u = { a };
+        u.x[1] = (int)(b * (u.x[1] - 1072632447) + 1072632447);
+        u.x[0] = 0;
+        return u.d;
+    }
+
+    // Detect (at compile time) whether double is compliant. Fall back to
+    // std::pow if not.
+    double iirPow(double a, double b) const
+    {
+        return std::numeric_limits<double>::is_iec559 ?
+            fastPow(a, b)
+            :
+            std::pow(a, b);
+    }
+
+
     static void calcDivSize (qint64 low, qint64 high, int divswanted, qint64 &adjlow, qint64 &step, int& divs);
     void        showToolTip(QMouseEvent* event, QString toolTipText);
 

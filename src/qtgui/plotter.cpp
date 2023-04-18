@@ -929,7 +929,6 @@ void CPlotter::zoomStepX(float step, int x)
 
     m_MaxHoldValid = false;
     m_MinHoldValid = false;
-    m_IIRValid = false;
     m_histIIRValid = false;
 }
 
@@ -1768,22 +1767,24 @@ void CPlotter::setNewFftData(float *fftData, int size)
     }
 
     // Update IIR, compensating for frame rate. If IIR is invalid, set alpha to
-    // use latest value. The IIR calculation is asymmetric (decay is faster
-    // than attack) because this is being done on linear data and display will
-    // be log data.
-    const float gamma = 8.0;
-    const float a1_attack = powf(1.0 - m_alpha, gamma / (float)fft_rate);
-    const float a_attack = 1.0 - a1_attack;
-    const float a1_decay = powf(a1_attack, 10.0);
-    const float a_decay = 1.0 - a1_decay;
+    // use latest value. Since the IIR is linear data and users would like to
+    // see symmetric attack/decay on the logarithmic y-axis, IIR is in terms of
+    // multiplication rather than addition.
+
+    // Make sure zeros don't get through to log calcs
+    const float fmin = std::numeric_limits<float>::min();
+
+    // Make the slider vs alpha nonlinear and compensate for the update rate.
+    // Attack and decay rate of change in dB/sec should not visibly change with
+    // FFT rate. Use full accuracy pow() here.
+    const double a = exp(-1.75 * (1.0 - m_alpha) * log((double)fft_rate));
+
+    // Use fast, low accuracy pow() in loop if possible (iirPow())
     for (int i = 0; i < size; ++i)
     {
-        const float v = fftData[i];
-        const float iir = m_fftIIR[i];
-        if (v > iir)
-            m_fftIIR[i] = m_IIRValid ? a_attack * v + a1_attack * iir : v;
-        else
-            m_fftIIR[i] = m_IIRValid ? a_decay * v + a1_decay * iir : v;
+        const double v = fftData[i];
+        const double iir = std::max(m_fftIIR[i], fmin);
+        m_fftIIR[i] = m_IIRValid ? iir * iirPow(v / iir, a) : v;
     }
 
     m_IIRValid = true;
