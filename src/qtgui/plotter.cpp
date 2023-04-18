@@ -62,7 +62,7 @@ Q_LOGGING_CATEGORY(plotter, "plotter")
 #define HOR_MARGIN 5
 #define VER_MARGIN 5
 
-const bool logBeforeAvg = true;
+const bool logBeforeAvg = false;
 
 int F2B(float f)
 {
@@ -745,10 +745,12 @@ void CPlotter::mousePressEvent(QMouseEvent * event)
                     if (m_fftDataSize && ((selectBuf != m_fftMaxHoldBuf) || m_MaxHoldValid))
                     {
                         // Find the data value of the click y()
+
                         const double plotHeight = m_2DPixmap.height();
                         const double panddBGainFactor = plotHeight / fabs(m_PandMaxdB - m_PandMindB);
                         const double vlog = m_PandMaxdB - py / panddBGainFactor;
-                        const float v = powf(10.0, vlog / 10.0);
+                        const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
+                        const float v = logBeforeAvg ? vlog : powf(10.0, vlog / logFactor);
 
                         // Ignore clicks exactly on the plot, below the
                         // pandapter, or when uninitialized
@@ -1131,9 +1133,7 @@ void CPlotter::paintEvent(QPaintEvent *)
 
     painter.drawPixmap(plotRectT, m_2DPixmap, plotRectS);
     if (!m_Frozen)
-    {
         painter.drawPixmap(wfRectT, m_WaterfallPixmap, wfRectS);
-    }
 }
 
 // Called to update spectrum data for displaying on the screen
@@ -1794,14 +1794,21 @@ void CPlotter::setNewFftData(float *fftData, int size)
     const float fmin = std::numeric_limits<float>::min();
 
     // Update IIR, compensating for frame rate. If IIR is invalid, set alpha to
-    // use latest value.
+    // use latest value. The IIR calculation is asymmetric (decay is faster
+    // than attack) because this is being done on linear data and display will
+    // be log data.
     const float gamma = 8.0;
-    const float a1 = pow(1.0 - m_alpha, gamma / (float)fft_rate);
-    const float a = 1.0 - a1;
+    const float a1_attack = powf(1.0 - m_alpha, gamma / (float)fft_rate);
+    const float a_attack = 1.0 - a1;
+    const float a1_decay = sqrtf(a1);
+    const float a_decay = sqrtf(a);
     for (int i = 0; i < size; ++i)
     {
         const float v = logBeforeAvg ? logFactor * log10(std::max(fftData[i], fmin)) : fftData[i];
-        m_fftIIR[i] = m_IIRValid ? a * v + a1 * m_fftIIR[i] : v;
+        if (v > m_fftIIR[i])
+            m_fftIIR[i] = m_IIRValid ? a_attack * v + a1_attack * m_fftIIR[i] : v;
+        else
+            m_fftIIR[i] = m_IIRValid ? a_decay * v + a1_decay * m_fftIIR[i] : v;
     }
 
     m_IIRValid = true;
