@@ -1228,7 +1228,6 @@ void CPlotter::draw(bool newData)
     const bool minIsAverage = m_PlotMode != PLOT_MODE_MAX;
 
     // Scale log10 by 20 for V, 10 for dBm
-    // const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
     const float logFactor = m_PlotScale == PLOT_SCALE_V ? 10.0 : 10.0;
 
     // Make sure zeros don't get through to log calcs
@@ -1268,7 +1267,7 @@ void CPlotter::draw(bool newData)
             // out-of-range values, rather than clipping.
             if (doHistogram)
             {
-                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10(v)));
+                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10f(v)));
                 if (bin >= 0 && bin < histBinsDisplayed)
                         m_histogram[x][bin] += 1;
             }
@@ -1349,7 +1348,7 @@ void CPlotter::draw(bool newData)
             // out-of-range values, rather than clipping.
             if (doHistogram)
             {
-                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10(v)));
+                const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10f(v)));
                 if (bin >= 0 && bin < histBinsDisplayed)
                         m_histogram[i][bin] += 1;
             }
@@ -1399,7 +1398,7 @@ void CPlotter::draw(bool newData)
             const float *wfSource = msec_per_wfline > 0 ? m_wfbuf : dataSource;
             for (i = xmin; i < xmax; ++i)
             {
-                qint32 cidx = qRound((m_WfMaxdB - logFactor * log10(wfSource[i + xmin])) * wfdBGainFactor);
+                qint32 cidx = qRound((m_WfMaxdB - logFactor * log10f(wfSource[i + xmin])) * wfdBGainFactor);
                 cidx = std::max(std::min(cidx, 255), 0);
                 painter1.setPen(m_ColorTbl[255 - cidx]);
                 painter1.drawRect(QRectF(i + xmin, 0.0, 1.0 * m_DPR, 1.0 * m_DPR));
@@ -1497,10 +1496,10 @@ void CPlotter::draw(bool newData)
         for (i = 0; i < npts; i++)
         {
             const double yMaxD = std::max(std::min(
-                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxBuf[i + xmin])),
+                panddBGainFactor * (m_PandMaxdB - logFactor * log10f(m_fftMaxBuf[i + xmin])),
                 plotHeight), 0.0);
             const double yAvgD = std::max(std::min(
-                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftAvgBuf[i + xmin])),
+                panddBGainFactor * (m_PandMaxdB - logFactor * log10f(m_fftAvgBuf[i + xmin])),
                 plotHeight), 0.0);
 
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
@@ -1564,7 +1563,7 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMaxHoldD = std::max(std::min(
-                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxHoldBuf[i + xmin])),
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10f(m_fftMaxHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMaxHoldD);
             }
@@ -1581,7 +1580,7 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMinHoldD = std::max(std::min(
-                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMinHoldBuf[i + xmin])),
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10f(m_fftMinHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMinHoldD);
             }
@@ -1636,7 +1635,7 @@ void CPlotter::draw(bool newData)
                     if (d > maxInWindow && d > 2.0 * minInWindow)
                     {
                         const double y = std::max(std::min(
-                            panddBGainFactor * (m_PandMaxdB - logFactor * log10(d)),
+                            panddBGainFactor * (m_PandMaxdB - logFactor * log10f(d)),
                             plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
@@ -1668,7 +1667,7 @@ void CPlotter::draw(bool newData)
                         && d > 1.0 * m_peakSmoothBuf[i + xmin + pw])
                     {
                         const double y = std::max(std::min(
-                            panddBGainFactor * ((m_PandMaxdB - logFactor * log10(detectSource[i + xmin]))),
+                            panddBGainFactor * ((m_PandMaxdB - logFactor * log10f(detectSource[i + xmin]))),
                             plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
@@ -1776,15 +1775,14 @@ void CPlotter::setNewFftData(float *fftData, int size)
 
     // Make the slider vs alpha nonlinear and compensate for the update rate.
     // Attack and decay rate of change in dB/sec should not visibly change with
-    // FFT rate. Use full accuracy pow() here.
+    // FFT rate.
     const double a = exp(-1.75 * (1.0 - m_alpha) * log((double)fft_rate));
 
-    // Use fast, low accuracy pow() in loop if possible (iirPow())
     for (int i = 0; i < size; ++i)
     {
         const double v = fftData[i];
         const double iir = std::max(m_fftIIR[i], fmin);
-        m_fftIIR[i] = m_IIRValid ? iir * iirPow(v / iir, a) : v;
+        m_fftIIR[i] = m_IIRValid ? iir * powf(v / iir, a) : v;
     }
 
     m_IIRValid = true;
