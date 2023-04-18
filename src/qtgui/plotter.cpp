@@ -62,8 +62,6 @@ Q_LOGGING_CATEGORY(plotter, "plotter")
 #define HOR_MARGIN 5
 #define VER_MARGIN 5
 
-const bool logBeforeAvg = false;
-
 int F2B(float f)
 {
     int b = (f >= 1.0 ? 255 : (f <= 0.0 ? 0 : (int)floor(f * 256.0)));
@@ -749,8 +747,9 @@ void CPlotter::mousePressEvent(QMouseEvent * event)
                         const double plotHeight = m_2DPixmap.height();
                         const double panddBGainFactor = plotHeight / fabs(m_PandMaxdB - m_PandMindB);
                         const double vlog = m_PandMaxdB - py / panddBGainFactor;
-                        const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
-                        const float v = logBeforeAvg ? vlog : powf(10.0, vlog / logFactor);
+                        const float logFactor = m_PlotScale == PLOT_SCALE_V ? 10.0 : 10.0;
+                        // const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
+                        const float v = powf(10.0, vlog / logFactor);
 
                         // Ignore clicks exactly on the plot, below the
                         // pandapter, or when uninitialized
@@ -1230,7 +1229,8 @@ void CPlotter::draw(bool newData)
     const bool minIsAverage = m_PlotMode != PLOT_MODE_MAX;
 
     // Scale log10 by 20 for V, 10 for dBm
-    const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
+    // const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
+    const float logFactor = m_PlotScale == PLOT_SCALE_V ? 10.0 : 10.0;
 
     // Make sure zeros don't get through to log calcs
     const float fmin = std::numeric_limits<float>::min();
@@ -1277,17 +1277,15 @@ void CPlotter::draw(bool newData)
             // New (or last) pixel - output values
             if (x != xprev || i == maxbin)
             {
-                if (!logBeforeAvg)
-                    vmax = std::max(vmax, fmin);
+                vmax = std::max(vmax, fmin);
                 m_wfMaxBuf[xprev] = vmax;
 
-                if (!logBeforeAvg)
-                    vmaxIIR = std::max(vmaxIIR, fmin);
+                vmaxIIR = std::max(vmaxIIR, fmin);
                 m_fftMaxBuf[xprev] = vmaxIIR;
 
-                const float vavg = std::max((float)(vsum / count), logBeforeAvg ? FFT_MIN_DB : fmin);
+                const float vavg = std::max((float)(vsum / count), fmin);
                 m_wfAvgBuf[xprev] = vavg;
-                const float vavgIIR = std::max((float)(vsumIIR / count), logBeforeAvg ? FFT_MIN_DB : fmin);
+                const float vavgIIR = std::max((float)(vsumIIR / count), fmin);
                 m_fftAvgBuf[xprev] = vavgIIR;
 
                 // New peak hold value if greater, or reset
@@ -1500,16 +1498,10 @@ void CPlotter::draw(bool newData)
         for (i = 0; i < npts; i++)
         {
             const double yMaxD = std::max(std::min(
-                logBeforeAvg ?
-                    panddBGainFactor * (m_PandMaxdB - m_fftMaxBuf[i + xmin])
-                    :
-                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxBuf[i + xmin])),
+                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxBuf[i + xmin])),
                 plotHeight), 0.0);
             const double yAvgD = std::max(std::min(
-                logBeforeAvg ?
-                    panddBGainFactor * (m_PandMaxdB - m_fftAvgBuf[i + xmin])
-                    :
-                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftAvgBuf[i + xmin])),
+                panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftAvgBuf[i + xmin])),
                 plotHeight), 0.0);
 
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
@@ -1573,10 +1565,7 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMaxHoldD = std::max(std::min(
-                    logBeforeAvg ?
-                        panddBGainFactor * (m_PandMaxdB - m_fftMaxHoldBuf[i + xmin])
-                        :
-                        panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxHoldBuf[i + xmin])),
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMaxHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMaxHoldD);
             }
@@ -1593,10 +1582,7 @@ void CPlotter::draw(bool newData)
             for (i = 0; i < npts; i++)
             {
                 const double yMinHoldD = std::max(std::min(
-                    logBeforeAvg ?
-                        panddBGainFactor * (m_PandMaxdB - m_fftMinHoldBuf[i + xmin])
-                    :
-                        panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMinHoldBuf[i + xmin])),
+                    panddBGainFactor * (m_PandMaxdB - logFactor * log10(m_fftMinHoldBuf[i + xmin])),
                     plotHeight), 0.0);
                 maxLineBuf[i] = QPointF(i + xmin, yMinHoldD);
             }
@@ -1651,10 +1637,7 @@ void CPlotter::draw(bool newData)
                     if (d > maxInWindow && d > 2.0 * minInWindow)
                     {
                         const double y = std::max(std::min(
-                            logBeforeAvg ?
-                                panddBGainFactor * (m_PandMaxdB - d)
-                                :
-                                panddBGainFactor * (m_PandMaxdB - logFactor * log10(d)),
+                            panddBGainFactor * (m_PandMaxdB - logFactor * log10(d)),
                             plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
@@ -1686,11 +1669,7 @@ void CPlotter::draw(bool newData)
                         && d > 1.0 * m_peakSmoothBuf[i + xmin + pw])
                     {
                         const double y = std::max(std::min(
-                            panddBGainFactor
-                            * (logBeforeAvg ?
-                                (m_PandMaxdB - detectSource[i + xmin])
-                                :
-                                (m_PandMaxdB - logFactor * log10(detectSource[i + xmin]))),
+                            panddBGainFactor * ((m_PandMaxdB - logFactor * log10(detectSource[i + xmin]))),
                             plotHeight - 0.0), 0.0);
                         m_Peaks[i + xmin] = y;
                     }
@@ -1740,7 +1719,7 @@ void CPlotter::setRunningState(bool running)
         m_MinHoldValid = false;
         m_IIRValid = false;
         m_histIIRValid = false;
-        m_histMaxIIR = logBeforeAvg ? FFT_MIN_DB : std::numeric_limits<float>::min();
+        m_histMaxIIR = std::numeric_limits<float>::min();
 
     }
 
@@ -1765,16 +1744,14 @@ void CPlotter::setNewFftData(float *fftData, int size)
         m_MinHoldValid = false;
         m_IIRValid = false;
         m_histIIRValid = false;
-        m_histMaxIIR = logBeforeAvg ? FFT_MIN_DB : std::numeric_limits<float>::min();
+        m_histMaxIIR = std::numeric_limits<float>::min();
     }
-
-    // Scale log10 by 20 for V, 10 for dBm
-    const float logFactor = m_PlotScale == PLOT_SCALE_V ? 20.0 : 10.0;
 
     // For V, V^2 -> V/RBW
     if (m_PlotScale == PLOT_SCALE_V) {
         for (int i = 0; i < size; ++i)
-            fftData[i] = sqrtf(fftData[i]) / (float)size;
+            // fftData[i] = sqrtf(fftData[i]) / (float)size;
+            fftData[i] = fftData[i] / (float)size / (float)size;
     }
     // For DBM, give choose dBm/RBW or dBm/Hz, scaled to 50 ohm.
     // 1000 V^2 / 2R
@@ -1790,25 +1767,23 @@ void CPlotter::setNewFftData(float *fftData, int size)
             fftData[i] = fftData[i] * pwr_scale;
     }
 
-    // Make sure zeros don't get through to log calcs
-    const float fmin = std::numeric_limits<float>::min();
-
     // Update IIR, compensating for frame rate. If IIR is invalid, set alpha to
     // use latest value. The IIR calculation is asymmetric (decay is faster
     // than attack) because this is being done on linear data and display will
     // be log data.
     const float gamma = 8.0;
     const float a1_attack = powf(1.0 - m_alpha, gamma / (float)fft_rate);
-    const float a_attack = 1.0 - a1;
-    const float a1_decay = sqrtf(a1);
-    const float a_decay = sqrtf(a);
+    const float a_attack = 1.0 - a1_attack;
+    const float a1_decay = powf(a1_attack, 10.0);
+    const float a_decay = 1.0 - a1_decay;
     for (int i = 0; i < size; ++i)
     {
-        const float v = logBeforeAvg ? logFactor * log10(std::max(fftData[i], fmin)) : fftData[i];
-        if (v > m_fftIIR[i])
-            m_fftIIR[i] = m_IIRValid ? a_attack * v + a1_attack * m_fftIIR[i] : v;
+        const float v = fftData[i];
+        const float iir = m_fftIIR[i];
+        if (v > iir)
+            m_fftIIR[i] = m_IIRValid ? a_attack * v + a1_attack * iir : v;
         else
-            m_fftIIR[i] = m_IIRValid ? a_decay * v + a1_decay * m_fftIIR[i] : v;
+            m_fftIIR[i] = m_IIRValid ? a_decay * v + a1_decay * iir : v;
     }
 
     m_IIRValid = true;
