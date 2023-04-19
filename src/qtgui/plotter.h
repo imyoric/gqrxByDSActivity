@@ -43,7 +43,7 @@ public:
     void setInvertScrolling(bool enabled) { m_InvertScrolling = enabled; }
     void setDXCSpotsEnabled(bool enabled) { m_DXCSpotsEnabled = enabled; }
 
-    void setNewFftData(float *fftData, int size);
+    void setNewFftData(const float *fftData, int size);
 
     void setCenterFreq(quint64 f);
     void setFreqUnits(qint32 unit) { m_FreqUnits = unit; }
@@ -245,16 +245,16 @@ private:
     double      m_histIIR[MAX_SCREENSIZE][MAX_HISTOGRAM_SIZE]{};
     double      m_histMaxIIR;
     std::vector<float> m_fftIIR;
+    std::vector<float> m_fftData;
     float       m_wfbuf[MAX_SCREENSIZE]{}; // used for accumulating waterfall data at high time spans
     float       m_fftMaxHoldBuf[MAX_SCREENSIZE]{};
     float       m_fftMinHoldBuf[MAX_SCREENSIZE]{};
     float       m_peakSmoothBuf[MAX_SCREENSIZE]{}; // used in peak detection
-    float      *m_fftData{};     /*! pointer to incoming FFT data */
     float      *m_wfData{};
     int         m_fftDataSize{};
 
-    int         m_XAxisYCenter{};
-    int         m_YAxisWidth{};
+    qreal       m_XAxisYCenter{};
+    qreal       m_YAxisWidth{};
 
     eCapturetype    m_CursorCaptured;
     bool        m_Frozen;           // Waterfall is frozen - pixmap will not be rendered
@@ -289,9 +289,9 @@ private:
     int         m_DemodLowCutFreqX{}; //screen coordinate x position
     int         m_MarkerAX{};
     int         m_MarkerBX{};
-    int         m_CursorCaptureDelta;
-    int         m_GrabPosition;
-    int         m_Percent2DScreen;
+    qreal       m_CursorCaptureDelta;
+    qreal       m_GrabPosition;
+    qreal       m_Percent2DScreen;
 
     int         m_FLowCmin;
     int         m_FLowCmax;
@@ -311,8 +311,8 @@ private:
     qint64      m_Span;
     float       m_SampleFreq;    /*!< Sample rate. */
     qint32      m_FreqUnits;
-    int         m_ClickResolution;
-    int         m_FilterClickResolution;
+    qreal       m_ClickResolution;
+    qreal       m_FilterClickResolution;
     ePlotMode   m_PlotMode;
     ePlotScale  m_PlotScale;
     ePlotPer    m_PlotPer;
@@ -323,16 +323,16 @@ private:
     int         m_FreqDigits;  /*!< Number of decimal digits in frequency strings. */
 
     QFont       m_Font;      /*!< Font used for plotter (system font) */
-    int         m_HdivDelta; /*!< Minimum distance in pixels between two horizontal grid lines (vertical division). */
-    int         m_VdivDelta; /*!< Minimum distance in pixels between two vertical grid lines (horizontal division). */
-    double      m_BandPlanHeight; /*!< Height in pixels of band plan (if enabled) */
+    qreal       m_HdivDelta; /*!< Minimum distance in pixels between two horizontal grid lines (vertical division). */
+    qreal       m_VdivDelta; /*!< Minimum distance in pixels between two vertical grid lines (horizontal division). */
+    qreal       m_BandPlanHeight; /*!< Height in pixels of band plan (if enabled) */
 
     quint32     m_LastSampleRate{};
 
     QColor      m_avgFftColor, m_maxFftColor, m_FftFillCol, m_MaxHoldColor, m_MinHoldColor;
     bool        m_FftFill{};
 
-    QMap<int,float>   m_Peaks;
+    QMap<int,qreal>   m_Peaks;
 
     QList< QPair<QRect, qint64> >     m_Taglist;
 
