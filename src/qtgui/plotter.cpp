@@ -371,7 +371,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
             setCursor(QCursor(Qt::ClosedHandCursor));
             // pan viewable range or move center frequency
             int delta_px = m_Xzero - px;
-            qint64 delta_hz = delta_px * m_Span / m_Size.width();
+            qint64 delta_hz = delta_px * m_Span / m_Size.width() / m_DPR;
             if (delta_hz != 0) // update m_Xzero only on real change
             {
                 if (event->buttons() & Qt::MiddleButton)
@@ -490,7 +490,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
         }
     }
     else if (MARKER_A == m_CursorCaptured
-             && px < m_Size.width() - m_CursorCaptureDelta
+             && px < m_Size.width() / m_DPR - m_CursorCaptureDelta
              && px > m_YAxisWidth + m_CursorCaptureDelta)
     {
         if (event->buttons() & Qt::LeftButton)
@@ -512,7 +512,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
         }
     }
     else if (MARKER_B == m_CursorCaptured
-             && px < m_Size.width() - m_CursorCaptureDelta
+             && px < m_Size.width() / m_DPR - m_CursorCaptureDelta
              && px > m_YAxisWidth + m_CursorCaptureDelta)
     {
         if (event->buttons() & Qt::LeftButton)
@@ -884,7 +884,7 @@ void CPlotter::zoomStepX(float step, int x)
     double new_range = qBound(10.0, m_Span * (double)step, m_SampleFreq * 10.0);
 
     // Frequency where event occurred is kept fixed under mouse
-    double ratio = (double)x / (qreal)m_Size.width();
+    double ratio = (double)x / (qreal)m_Size.width() / m_DPR;
     qint64 fixed_hz = freqFromX(x);
     double f_max = fixed_hz + (1.0 - ratio) * new_range;
     double f_min = f_max - new_range;
@@ -948,6 +948,8 @@ void CPlotter::setPlotMode(int mode)
     m_MaxHoldValid = false;
     m_MinHoldValid = false;
     // Do not need to invalidate IIR data when switching modes
+
+    updateOverlay();
 }
 
 void CPlotter::setPlotScale(int scale)
@@ -1125,32 +1127,32 @@ void CPlotter::paintEvent(QPaintEvent *)
     // Pixmap resolution scales with DPR. Here, they are rescaled to fit the
     // the CPlotter resolution.
 
-    // Source dimensions
-
-    // Target dimensions
-
     QPainter painter(this);
 
     int plotHeightT = 0;
     if (!m_2DPixmap.isNull())
     {
-        const int plotWidthS = m_Size.width();
+        const int plotWidthS = m_2DPixmap.width();
         const int plotHeightS = m_2DPixmap.height();
         const QRectF plotRectS(0.0, 0.0, plotWidthS, plotHeightS);
+
         const int plotWidthT = qRound((qreal)plotWidthS / m_DPR);
         plotHeightT = qRound((qreal)plotHeightS / m_DPR);
         const QRectF plotRectT(0.0, 0.0, plotWidthT, plotHeightT);
+
         painter.drawPixmap(plotRectT, m_2DPixmap, plotRectS);
     }
 
     if (!m_Frozen && !m_WaterfallPixmap.isNull())
     {
-        const int wfWidthS = m_Size.width();
+        const int wfWidthS = m_WaterfallPixmap.width();
         const int wfHeightS = m_WaterfallPixmap.height();
         const QRectF wfRectS(0.0, 0.0, wfWidthS, wfHeightS);
+
         const int wfWidthT = qRound((qreal)wfWidthS / m_DPR);
         const int wfHeightT = qRound((qreal)wfHeightS / m_DPR);
         const QRectF wfRectT(0.0, plotHeightT, wfWidthT, wfHeightT);
+
         painter.drawPixmap(wfRectT, m_WaterfallPixmap, wfRectS);
     }
 }
@@ -1171,7 +1173,8 @@ void CPlotter::draw(bool newData)
 
     const quint64 tnow_ms = QDateTime::currentMSecsSinceEpoch();
 
-    const qreal w = m_Size.width();
+    // Pixmaps might be null, so scale up m_Size to get width.
+    const qreal w = m_Size.width() * m_DPR;
     const qreal plotHeight = m_2DPixmap.height();
     const qreal shadowOffset = metrics.height() / 20.0;
 
@@ -1538,12 +1541,12 @@ void CPlotter::draw(bool newData)
                         const qreal binY = binSizeY * j;
                         topBin = std::min(topBin, binY);
                         const qreal binH = binSizeY * (j + 1) - binY;
-                        painter2.fillRect(QRectF(i + xmin - histZoom / 2, binY, 1.0 * histZoom, binH), c);
+                        painter2.fillRect(QRectF(i + xmin - histZoom / 2, binY, 1.0 * histZoom / 2, binH), c);
                     }
                 }
                 // Highlight the top bin, if it isn't too crowded
                 if (topBin != plotHeight && showHistHighlights) {
-                    painter2.fillRect(QRectF(i + xmin - histZoom / 2, topBin, 1.0 * histZoom, binSizeY), maxLineColor);
+                    painter2.fillRect(QRectF(i + xmin - histZoom / 2, topBin, 1.0 * histZoom / 2, binSizeY), maxLineColor);
                 }
             }
 
@@ -2223,7 +2226,7 @@ void CPlotter::makeFrequencyStrs()
 // Convert from frequency to screen coordinate
 int CPlotter::xFromFreq(qint64 freq)
 {
-    qreal w = m_Size.width();
+    qreal w = m_Size.width() * m_DPR;
     double startFreq = (double)m_CenterFreq
                        + (double)m_FftCenter
                        - (double)m_Span / 2.0;
@@ -2238,7 +2241,7 @@ int CPlotter::xFromFreq(qint64 freq)
 // Convert from screen coordinate to frequency
 qint64 CPlotter::freqFromX(int x)
 {
-    double ratio = (double)x / (qreal)m_Size.width();
+    double ratio = (double)x / (qreal)m_Size.width() / m_DPR;
     qint64 f = qRound64((double)m_CenterFreq + (double)m_FftCenter
                         - (double)m_Span / 2.0 + ratio * (double)m_Span);
     return f;
