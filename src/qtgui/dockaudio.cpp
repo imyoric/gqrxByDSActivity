@@ -74,6 +74,7 @@ DockAudio::DockAudio(QWidget *parent) :
     ui->audioSpectrum->setVdivDelta(40);
     ui->audioSpectrum->setHdivDelta(40);
     ui->audioSpectrum->setFreqDigits(1);
+    ui->audioSpectrum->setRunningState(true);
 
     QShortcut *rec_toggle_shortcut = new QShortcut(QKeySequence(Qt::Key_R), this);
     QShortcut *mute_toggle_shortcut = new QShortcut(QKeySequence(Qt::Key_M), this);
