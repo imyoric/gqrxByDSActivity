@@ -1229,16 +1229,13 @@ void CPlotter::draw(bool newData)
 
     // Draw avg line, except in max mode. Suppress if it would clutter histogram.
     const bool doAvgLine = m_PlotMode != PLOT_MODE_MAX
-                           && (m_PlotMode != PLOT_MODE_HISTOGRAM
-                               || showHistHighlights);
+                           && (m_PlotMode != PLOT_MODE_HISTOGRAM);
 
     // Draw max line, except in avg and histogram modes
     const bool doMaxLine = m_PlotMode != PLOT_MODE_AVG
                            && m_PlotMode != PLOT_MODE_HISTOGRAM;
 
     // Initialize results
-    memset(m_fftMaxBuf, 0, sizeof(m_fftMaxBuf));
-    memset(m_fftAvgBuf, 0, sizeof(m_fftAvgBuf));
     if (doHistogram)
         memset(m_histogram, 0, sizeof(m_histogram));
 
@@ -1252,6 +1249,9 @@ void CPlotter::draw(bool newData)
 
     // Make sure zeros don't get through to log calcs
     const float fmin = std::numeric_limits<float>::min();
+
+    // Wider histogram bins - future feature
+    const int histZoom = 1;
 
     float vmax;
     float vmaxIIR;
@@ -1289,7 +1289,7 @@ void CPlotter::draw(bool newData)
             {
                 const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10f(v)));
                 if (bin >= 0 && bin < histBinsDisplayed)
-                        m_histogram[x][bin] += 1;
+                        m_histogram[x / histZoom][bin] += 1;
             }
 
             // New (or last) pixel - output values
@@ -1370,7 +1370,7 @@ void CPlotter::draw(bool newData)
             {
                 const qint32 bin = qRound(histdBGainFactor * (m_PandMaxdB - logFactor * log10f(v)));
                 if (bin >= 0 && bin < histBinsDisplayed)
-                        m_histogram[i][bin] += 1;
+                        m_histogram[i / histZoom][bin] += 1;
             }
         }
     }
@@ -1446,8 +1446,8 @@ void CPlotter::draw(bool newData)
                 for (j = 0; j < histBinsDisplayed; ++j)
                 {
                     double histV;
-                    const float histPrev = m_histIIR[i][j];
-                    const float histNew = m_histogram[i][j];
+                    const float histPrev = m_histIIR[i / histZoom][j];
+                    const float histNew = m_histogram[i / histZoom][j];
                     // Fast response up, alpha response down
                     if (!m_histIIRValid)
                         histV = histNew;
@@ -1455,7 +1455,7 @@ void CPlotter::draw(bool newData)
                         histV = histNew;
                     else
                         histV = a1 * histPrev + a * histNew;
-                    m_histIIR[i][j] = histV;
+                    m_histIIR[i / histZoom][j] = histV;
                     histMax = std::max(histMax, histV);
                 }
             }
@@ -1524,7 +1524,7 @@ void CPlotter::draw(bool newData)
 
             if (m_PlotMode == PLOT_MODE_HISTOGRAM)
             {
-                const double *histData = m_histIIR[i + xmin];
+                const double *histData = m_histIIR[(i + xmin) / histZoom];
                 qreal topBin = plotHeight;
                 for (j = 0; j < histBinsDisplayed; ++j)
                 {
@@ -1538,12 +1538,13 @@ void CPlotter::draw(bool newData)
                         const qreal binY = binSizeY * j;
                         topBin = std::min(topBin, binY);
                         const qreal binH = binSizeY * (j + 1) - binY;
-                        painter2.fillRect(QRectF(i + xmin, binY, 1.0, binH), c);
+                        painter2.fillRect(QRectF(i + xmin - histZoom / 2, binY, 1.0 * histZoom, binH), c);
                     }
                 }
                 // Highlight the top bin, if it isn't too crowded
-                if (topBin != plotHeight && showHistHighlights)
-                    painter2.fillRect(QRectF(i + xmin, topBin, 1.0, binSizeY), maxLineColor);
+                if (topBin != plotHeight && showHistHighlights) {
+                    painter2.fillRect(QRectF(i + xmin - histZoom / 2, topBin, 1.0 * histZoom, binSizeY), maxLineColor);
+                }
             }
 
             // Add max, average points if they will be drawn
