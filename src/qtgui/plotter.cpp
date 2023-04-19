@@ -938,8 +938,8 @@ void CPlotter::zoomStepX(float step, int x)
 void CPlotter::zoomOnXAxis(float level)
 {
     float current_level = (float)m_SampleFreq / (float)m_Span;
-
     zoomStepX(current_level / level, xFromFreq(m_DemodCenterFreq));
+    updateOverlay();
 }
 
 void CPlotter::setPlotMode(int mode)
@@ -1416,7 +1416,7 @@ void CPlotter::draw(bool newData)
 
             // Use stored max if in manual mode, else current data
             const float *wfSource = msec_per_wfline > 0 ? m_wfbuf : dataSource;
-            for (i = xmin; i < xmax; ++i)
+            for (i = 0; i < npts; ++i)
             {
                 qint32 cidx = qRound((m_WfMaxdB - logFactor * log10f(wfSource[i + xmin])) * wfdBGainFactor);
                 cidx = std::max(std::min(cidx, 255), 0);
@@ -1801,7 +1801,8 @@ void CPlotter::setNewFftData(const float *fftData, int size)
     // Make the slider vs alpha nonlinear and compensate for the update rate.
     // Attack and decay rate of change in dB/sec should not visibly change with
     // FFT rate.
-    const double a = exp(-1.75 * (1.0 - m_alpha) * log((double)fft_rate));
+    const double gamma = 0.7;
+    const double a = pow(exp(-1.75 * (1.0 - m_alpha) * log((double)fft_rate)), gamma);
 
     // Shortcut expensive pow() if not needed
     const bool needIIR = m_IIRValid                         // Initializing
