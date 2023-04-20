@@ -72,7 +72,6 @@ DockAudio::DockAudio(QWidget *parent) :
     ui->audioSpectrum->enableBandPlan(false);
     ui->audioSpectrum->setFftRange(-80., 0.);
     ui->audioSpectrum->setVdivDelta(40);
-    ui->audioSpectrum->setHdivDelta(40);
     ui->audioSpectrum->setFreqDigits(1);
     ui->audioSpectrum->setRunningState(true);
 

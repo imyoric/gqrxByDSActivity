@@ -91,7 +91,6 @@ public:
         drawOverlay();
     }
 
-    void setHdivDelta(int delta) { m_HdivDelta = delta; }
     void setVdivDelta(int delta) { m_VdivDelta = delta; }
 
     void setFreqDigits(int digits) { m_FreqDigits = digits>=0 ? digits : 0; }
@@ -289,8 +288,8 @@ private:
     int         m_DemodLowCutFreqX{}; //screen coordinate x position
     int         m_MarkerAX{};
     int         m_MarkerBX{};
-    qreal       m_CursorCaptureDelta;
-    qreal       m_GrabPosition;
+    int         m_CursorCaptureDelta;
+    int         m_GrabPosition;
     qreal       m_Percent2DScreen;
 
     int         m_FLowCmin;
@@ -323,7 +322,6 @@ private:
     int         m_FreqDigits;  /*!< Number of decimal digits in frequency strings. */
 
     QFont       m_Font;      /*!< Font used for plotter (system font) */
-    qreal       m_HdivDelta; /*!< Minimum distance in pixels between two horizontal grid lines (vertical division). */
     qreal       m_VdivDelta; /*!< Minimum distance in pixels between two vertical grid lines (horizontal division). */
     qreal       m_BandPlanHeight; /*!< Height in pixels of band plan (if enabled) */
 

@@ -42,7 +42,9 @@
 
 Q_LOGGING_CATEGORY(plotter, "plotter")
 
-#define CUR_CUT_DELTA 5		//cursor capture delta in pixels
+#define CUR_CUT_DELTA         5     // cursor capture delta in pixels
+#define CLICK_FREQ_RESOLUTION 100   // frequency rounding for set via click
+#define VDIV_DELTA            30
 
 #define FFT_MIN_DB     -160.f
 #define FFT_MAX_DB      30.f
@@ -120,8 +122,8 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     m_FHiCmax = 25000;
     m_symetric = true;
 
-    m_ClickResolution = 100;
-    m_FilterClickResolution = 100;
+    m_ClickResolution = CLICK_FREQ_RESOLUTION;
+    m_FilterClickResolution = CLICK_FREQ_RESOLUTION;
     m_CursorCaptureDelta = CUR_CUT_DELTA;
     m_WaterfallMode = WATERFALL_MODE_MAX;
     m_PlotMode = PLOT_MODE_MAX;
@@ -155,8 +157,7 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
     m_Size = QSize(0,0);
     m_GrabPosition = 0;
     m_Percent2DScreen = 35;	//percent of screen used for 2D display
-    m_VdivDelta = 30;
-    m_HdivDelta = 70;
+    m_VdivDelta = VDIV_DELTA;
     m_BandPlanHeight = 0.0;
 
     m_FreqDigits = 6;
@@ -169,6 +170,7 @@ CPlotter::CPlotter(QWidget *parent) : QFrame(parent)
 
     // always update waterfall
     tlast_wf_ms = 0;
+    tlast_wf_drawn_ms = 0;
     msec_per_wfline = 0;
     tlast_peaks_ms = 0;
     wf_epoch = 0;
@@ -194,6 +196,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
 {
     QPoint pt = event->pos();
 
+    int w = m_OverlayPixmap.width();
     int h = m_OverlayPixmap.height();
     int px = qRound((qreal)pt.x() * m_DPR);
     int py = qRound((qreal)pt.y() * m_DPR);
@@ -371,7 +374,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
             setCursor(QCursor(Qt::ClosedHandCursor));
             // pan viewable range or move center frequency
             int delta_px = m_Xzero - px;
-            qint64 delta_hz = delta_px * m_Span / m_Size.width() / m_DPR;
+            qint64 delta_hz = qRound64((qreal)delta_px * (qreal)m_Span / (qreal)w);
             if (delta_hz != 0) // update m_Xzero only on real change
             {
                 if (event->buttons() & Qt::MiddleButton)
@@ -490,7 +493,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
         }
     }
     else if (MARKER_A == m_CursorCaptured
-             && px < m_Size.width() / m_DPR - m_CursorCaptureDelta
+             && px < w - m_CursorCaptureDelta
              && px > m_YAxisWidth + m_CursorCaptureDelta)
     {
         if (event->buttons() & Qt::LeftButton)
@@ -512,7 +515,7 @@ void CPlotter::mouseMoveEvent(QMouseEvent* event)
         }
     }
     else if (MARKER_B == m_CursorCaptured
-             && px < m_Size.width() / m_DPR - m_CursorCaptureDelta
+             && px < w - m_CursorCaptureDelta
              && px > m_YAxisWidth + m_CursorCaptureDelta)
     {
         if (event->buttons() & Qt::LeftButton)
@@ -1112,6 +1115,9 @@ void CPlotter::resizeEvent(QResizeEvent* )
         // Waterfall accumulator my be the wrong size now, so invalidate.
         if (msec_per_wfline > 0)
             clearWaterfallBuf();
+
+        // Other things that need to scale with DPR
+        m_CursorCaptureDelta = qRound((qreal)CUR_CUT_DELTA * m_DPR);
     }
 
     drawOverlay();
@@ -1834,7 +1840,6 @@ void CPlotter::setNewFftData(const float *fftData, int size)
 void CPlotter::setFftAvg(float avg)
 {
     m_alpha = avg;
-    m_histIIRValid = false;
 }
 
 void CPlotter::setFftRange(float min, float max)
@@ -2100,7 +2105,7 @@ void CPlotter::drawOverlay()
     qint64 dbDivSize = 0;
 
     calcDivSize((qint64) m_PandMindB, (qint64) m_PandMaxdB,
-                qMax(h / m_VdivDelta, (qreal)VERT_DIVS_MIN),
+                qMax(h / (m_VdivDelta * m_DPR), (qreal)VERT_DIVS_MIN),
                 mindBAdj64, dbDivSize, m_VerDivs);
 
     dbstepsize = (float) dbDivSize;
